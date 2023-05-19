@@ -12,6 +12,7 @@ __pycache__/
 **/.idea
 *.iml
 venv/
+as-sketcher
 
 build.sh
 deploy.sh
