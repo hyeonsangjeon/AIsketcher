@@ -79,7 +79,7 @@ import AIsketcher
 from PIL import Image
 import numpy as np
 file_name = 'hello.jpg'
-input_text = 'Cute, (hungry), plump, sitting at a table by the beach, warm feeling, beautiful shining eyes, seascape'
+input_text = '귀여운, (배가고픈), 포동포동한, 해변가 식탁에 앉은, 따뜻한 느낌, 아름답고 빛나는 눈, 바다풍경'
 
 trans_info = {
             'region_name' : 'us-east-1', #user region
@@ -104,7 +104,7 @@ import AIsketcher
 from PIL import Image
 import numpy as np
 file_name = 'hello.jpg'
-input_text = 'Cute, (hungry), plump, sitting at a table by the beach, warm feeling, beautiful shining eyes, seascape'
+input_text = '귀여운, (배가고픈), 포동포동한, 해변가 식탁에 앉은, 따뜻한 느낌, 아름답고 빛나는 눈, 바다풍경'
 
 trans_info = {
             'region_name' : 'us-east-1', #user region
