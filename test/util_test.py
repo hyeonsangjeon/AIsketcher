@@ -5,7 +5,6 @@ tracemalloc.start()
 class TestAIskectcher(unittest.TestCase):
 
     def test_translate_test_kr(self):
-
         test_input = '꿈, 상상속의 나라, 만화, 특이한 캐릭터, 이상한, 멋진, 귀여운, 환상적인'
         print('test_input : ', test_input)
         trans_info = {
@@ -18,7 +17,6 @@ class TestAIskectcher(unittest.TestCase):
         }
         result = translate_language(test_input,trans_info)
         print('result : ', result)
-
 
 
 
