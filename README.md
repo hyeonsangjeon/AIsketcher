@@ -87,7 +87,8 @@ trans_info = {
             'aws_access_key_id' : '{{YOUR_ACCESS_KEY}}',
             'aws_secret_access_key' : '{{YOUR_SECRET_KEY}}',
             'SourceLanguageCode' : 'ko',
-            'TargetLanguageCode' : 'en'
+            'TargetLanguageCode' : 'en',
+            'iam_access' : False
         }
 
 num_steps = 50
@@ -110,7 +111,8 @@ input_text = '귀여운, (배가고픈), 포동포동한, 해변가 식탁에 �
 trans_info = {
             'region_name' : 'us-east-1', #user region
             'SourceLanguageCode' : 'ko',
-            'TargetLanguageCode' : 'en'
+            'TargetLanguageCode' : 'en',
+            'iam_access' : True
         }
 
 num_steps = 50
