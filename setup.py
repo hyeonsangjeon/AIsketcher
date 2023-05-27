@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="AIsketcher",
-    version="0.0.0.2",
+    version="0.0.0.3",
     author="hyeonsangjeon",
     author_email="wingnut0310@gmail.com",
     description="Text-to-image generation using Huggingface stable diffusion ControlNet conditioning and AWS Translate's prompt translation function package",
