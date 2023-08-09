@@ -1,6 +1,10 @@
 import unittest
-from AIsketcher.modelPipe import translate_language
+from AIsketcher.modelPipe import translate_language, resize_image
 import tracemalloc
+from PIL import Image
+import numpy as np
+import os
+
 tracemalloc.start()
 class TestAIskectcher(unittest.TestCase):
 
@@ -17,6 +21,13 @@ class TestAIskectcher(unittest.TestCase):
         }
         result = translate_language(test_input,trans_info)
         print('result : ', result)
+
+    def test_resize_image(self):
+        current_directory = os.getcwd()
+        print(current_directory)
+        file_name = '../pic/test2.jpeg'
+        image = resize_image(file_name, 800)
+        image.save("result_test.jpeg")
 
 
 
