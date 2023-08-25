@@ -1,5 +1,6 @@
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://raw.githubusercontent.com/hyeonsangjeon/youtube-dl-nas/master/LICENSE)
-[![Downloads](https://pepy.tech/badge/AIsketcher)](https://pepy.tech/project/AIsketcher)
+[![Downloads](https://static.pepy.tech/badge/AIsketcher)](https://pepy.tech/project/AIsketcher)
+[![PyPI version](https://badge.fury.io/py/AIsketcher.svg)](https://pypi.org/project/AIsketcher/)
 
 # AIsketcher
 
