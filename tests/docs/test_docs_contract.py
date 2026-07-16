@@ -212,6 +212,58 @@ def test_studio_heritage_fixture_is_fixed_seed_and_hash_verified() -> None:
         assert hashlib.sha256(artifact.read_bytes()).hexdigest() == descriptor["sha256"]
 
 
+def test_studio_hpo_hero_fixture_is_selected_and_hash_verified() -> None:
+    root = DOCS / "assets/heritage-studio-hero-hpo-en"
+    provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))
+    manifest_path = root / provenance["generation"]["manifest"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == provenance[
+        "generation"
+    ]["manifest_sha256"]
+    assert provenance["schema"] == "aisketcher.studio-hero-hpo-fixture/v1"
+    assert provenance["source"]["camera_or_gps_metadata_present"] is False
+    assert provenance["source"]["private_name_present"] is False
+    assert provenance["generation"]["offline"] is True
+    assert provenance["generation"]["downloaded_bytes"] == 0
+    assert provenance["hpo"]["new_candidates_generated"] == 12
+    assert sum(round_["candidates"] for round_ in provenance["hpo"]["rounds"]) == 12
+    assert provenance["hpo"]["technical_scores_are_aesthetic_claims"] is False
+
+    selected = provenance["generation"]["selected_candidate"]
+    assert manifest["selection"] == selected == "candidate-ffd8b272e6ec"
+    selected_candidate = next(
+        candidate for candidate in manifest["candidates"] if candidate["id"] == selected
+    )
+    assert selected_candidate["seed"] == provenance["generation"]["selected_seed"]
+    assert selected_candidate["seed"] == 6764547109648557242
+    assert manifest["seed_plan"] == {
+        "mode": "explicit",
+        "seeds": [
+            6764547109648557242,
+            6854547109648557242,
+            6634547109688557242,
+            6764547109648557243,
+        ],
+    }
+    assert manifest["recipe"]["preset"] == "sdxl-canny-lite@1"
+    assert manifest["recipe"]["steps"] == 36
+    assert manifest["recipe"]["guidance_scale"] == 7.0
+    assert manifest["recipe"]["control_strength"] == 0.55
+    assert manifest["recipe"]["prompt"] == provenance["heritage_record"][
+        "effective_prompt_en"
+    ]
+    assert manifest["source"]["canny"] == {
+        "aperture_size": 3,
+        "high": 160,
+        "l2_gradient": False,
+        "low": 140,
+    }
+    for descriptor in manifest["files"].values():
+        artifact = root / descriptor["path"]
+        assert hashlib.sha256(artifact.read_bytes()).hexdigest() == descriptor["sha256"]
+
+
 def test_heritage_seed_study_is_new_hash_verified_evidence() -> None:
     root = DOCS / "assets/heritage-seed-study"
     provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))

@@ -1,0 +1,225 @@
+{
+  "backend": "diffusers",
+  "candidates": [
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-ffd8b272e6ec",
+      "id": "candidate-ffd8b272e6ec",
+      "parent_id": null,
+      "scores": {
+        "badges": [
+          "cleanest edges",
+          "most distinct"
+        ],
+        "distinctiveness": 0.324347,
+        "edge_cleanliness": 0.941729,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.089802
+      },
+      "seed": 6764547109648557242
+    },
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-c2b85f03bafd",
+      "id": "candidate-c2b85f03bafd",
+      "parent_id": null,
+      "scores": {
+        "badges": [
+          "closest structure"
+        ],
+        "distinctiveness": 0.301577,
+        "edge_cleanliness": 0.775736,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.110626
+      },
+      "seed": 6854547109648557242
+    },
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-e78fff7c6921",
+      "id": "candidate-e78fff7c6921",
+      "parent_id": null,
+      "scores": {
+        "badges": [],
+        "distinctiveness": 0.267569,
+        "edge_cleanliness": 0.786622,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.093334
+      },
+      "seed": 6634547109688557242
+    },
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-f15e4d703ae1",
+      "id": "candidate-f15e4d703ae1",
+      "parent_id": null,
+      "scores": {
+        "badges": [],
+        "distinctiveness": 0.286177,
+        "edge_cleanliness": 0.508822,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.088293
+      },
+      "seed": 6764547109648557243
+    }
+  ],
+  "files": {
+    "candidate:candidate-c2b85f03bafd": {
+      "path": "candidates/02-candidate-c2b85f03bafd.png",
+      "sha256": "7f87610206eb048022269d6af4c78663e90b51fec7f83e4dd14f74af616c1b09"
+    },
+    "candidate:candidate-e78fff7c6921": {
+      "path": "candidates/03-candidate-e78fff7c6921.png",
+      "sha256": "a3e2eecc89259f0853601eac04bd9b683d8f012e1d587b68eef05c3376168e59"
+    },
+    "candidate:candidate-f15e4d703ae1": {
+      "path": "candidates/04-candidate-f15e4d703ae1.png",
+      "sha256": "112972ea6be5b2d91c7ff83a5b24cc0d7bb6a2ab8a005c6761438b114a53b426"
+    },
+    "candidate:candidate-ffd8b272e6ec": {
+      "path": "candidates/01-candidate-ffd8b272e6ec.png",
+      "sha256": "abb18ea57bbbf9e5d5d3a7545fe77920b8106f2eee41729510ffce0dce9bb6b6"
+    },
+    "contact_sheet": {
+      "path": "contact-sheet.png",
+      "sha256": "8205733e5080fb03fa25cca82c03eb810c74226b6fd735934458cd9c05986497"
+    },
+    "control": {
+      "path": "control.png",
+      "sha256": "24780b3e469e3de53659f0c8b047667301e983d05cc44545983c1dc2d776ce8e"
+    },
+    "source": {
+      "path": "source.png",
+      "sha256": "50f1b2f9bc88c20e45cc38fc8af5e261fab8061fa456c7f9a654e7b8c2017864"
+    }
+  },
+  "kind": "exploration",
+  "lineage": {
+    "locks": [],
+    "parent_id": null,
+    "variation_strength": null
+  },
+  "recipe": {
+    "capability_report": {
+      "backend": "diffusers",
+      "issues": [],
+      "supported": true
+    },
+    "control_strength": 0.55,
+    "guidance_scale": 7.0,
+    "height": 576,
+    "locks": [],
+    "models": [
+      {
+        "repo_id": "stabilityai/stable-diffusion-xl-base-1.0",
+        "revision": "462165984030d82259a11f4367a4eed129e94a7b",
+        "role": "base"
+      },
+      {
+        "repo_id": "diffusers/controlnet-canny-sdxl-1.0-small",
+        "revision": "edd85f64c5f87dfb6d73762949d9daca16389518",
+        "role": "controlnet"
+      }
+    ],
+    "negative_prompt": "typography, captions, watermark, logo, photorealistic people, flat watercolor wash, muddy pastel, washed-out colors, low contrast, malformed faces, duplicate characters, extra limbs, white central void, generic tent, cropped main silhouette, flat empty composition, visual clutter",
+    "preset": "sdxl-canny-lite@1",
+    "profile": "graphic_design",
+    "prompt": "An elaborate miniature fantasy country built in the sketch's tall letter A silhouette, populated by delightful tiny mascots. Painted metal towers, enamel creatures, glowing glass windows, layered architectural depth, vivid cyan, cobalt, vermilion, yellow and gold, crisp handcrafted details, dramatic studio lighting, premium concept maquette photograph.",
+    "scheduler": "unipc",
+    "steps": 36,
+    "structure": "balanced",
+    "variation_strength": null,
+    "width": 768
+  },
+  "recipe_sha256": "57e36a609469561681bd3861d0e868cf18f8da4c872a2cb3ab26cfec1331cdbb",
+  "run_id": "study-hero-hpo-2026",
+  "runtime": {
+    "aisketcher": "0.2.0",
+    "backend": "diffusers",
+    "diffusers": "0.39.0",
+    "numpy": "2.5.1",
+    "opencv": "5.0.0",
+    "pillow": "12.3.0",
+    "python": "3.14.6",
+    "torch": "2.13.0",
+    "transformers": "5.14.0"
+  },
+  "schema": "aisketcher.manifest/v1",
+  "seed_plan": {
+    "mode": "explicit",
+    "seeds": [
+      6764547109648557242,
+      6854547109648557242,
+      6634547109688557242,
+      6764547109648557243
+    ]
+  },
+  "selection": "candidate-ffd8b272e6ec",
+  "source": {
+    "canny": {
+      "aperture_size": 3,
+      "high": 160,
+      "l2_gradient": false,
+      "low": 140
+    },
+    "diagnostics": {
+      "border_edge_ratio": 0.000445,
+      "component_count": 278,
+      "contrast": 0.274599,
+      "edge_density": 0.055863,
+      "flags": {
+        "crop_risk": false,
+        "edge_dense": false,
+        "edge_sparse": false,
+        "low_contrast": false
+      },
+      "fragmentation": 11.249595,
+      "recommended_canny": {
+        "aperture_size": 3,
+        "high": 224,
+        "l2_gradient": false,
+        "low": 90
+      }
+    },
+    "original_size": [
+      768,
+      576
+    ],
+    "prepared_size": [
+      768,
+      576
+    ]
+  }
+}

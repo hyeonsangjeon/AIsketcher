@@ -86,13 +86,15 @@ open:
     <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg" width="1200" alt="AIsketcher Studio English Simple view showing a privacy-reviewed family sketch, its selected result, four deterministic directions, and manifest-backed settings">
   </a>
 </p>
-<p align="center"><sub>Actual local Studio · selected seed 6764547109648557242 · pinned sdxl-canny-lite@1 · select the image to open it full size</sub></p>
+<p align="center"><sub>Actual local Studio · HPO-selected historical seed 6764547109648557242 · pinned sdxl-canny-lite@1 · select the image to open it full size</sub></p>
 
 This privacy-reviewed family-sketch fixture is used only for documentation and
 is separate from the bundled Pocket Kingdom Guided Sample. Its authenticated
 manifest fills the visible prompt, profile, and structure controls, and fixes
-the selected direction to seed `6764547109648557242`. Model weights were
-already local, so the capture caused no model download or image upload.
+the HPO-selected direction to seed `6764547109648557242`. Twelve new candidates
+were reviewed in four bounded rounds before this direction was selected. Model
+weights were already local, so the capture caused no model download or image
+upload.
 
 - **Simple** asks for a sketch, a one-sentence brief, a work type, and a
   Loose/Balanced/Faithful structure choice.

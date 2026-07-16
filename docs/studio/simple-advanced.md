@@ -25,9 +25,10 @@ entry point over the packaged app in an editable checkout.
 
 For this capture, Studio was launched with a documentation-only,
 privacy-reviewed family-sketch fixture. The visible prompt, profile, and
-structure settings come from its authenticated manifest, and the selected
+structure settings come from its authenticated manifest, and the HPO-selected
 direction is fixed to seed `6764547109648557242` with pinned preset
-`sdxl-canny-lite@1`. This fixture is separate from the bundled Pocket Kingdom
+`sdxl-canny-lite@1`. Twelve new candidates were reviewed in four bounded rounds
+before selection. This fixture is separate from the bundled Pocket Kingdom
 Guided Sample. Model weights were already local, so the capture caused no model
 download or image upload.
 

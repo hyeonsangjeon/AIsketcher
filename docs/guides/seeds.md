@@ -102,27 +102,27 @@ saved runtime prompt, not a claimed recovery of the old AWS translation.
 | Preset | pinned `sdxl-canny-lite@1` |
 | Outputs | 4 explicit seeds; no random seed |
 | Selected seed | `6764547109648557242` |
-| Steps / CFG | 32 / 6.5 |
+| Steps / CFG | 36 / 7.0 |
 | Canny low / high | 140 / 160 |
 | Control strength | 0.55 |
 
 <figure class="canonical-source">
   <img
-    src="../../assets/heritage-studio-fixed-seed-en/contact-sheet.png"
-    alt="Four vivid pen-and-watercolor AIsketcher directions generated for the fixed-seed English Studio documentation fixture"
+    src="../../assets/heritage-studio-hero-hpo-en/contact-sheet.png"
+    alt="Four dimensional miniature AIsketcher directions generated for the HPO-selected English Studio documentation fixture"
     data-lightbox
     data-caption="Current Studio hero study: the verified active seed first, followed by three explicit comparison seeds"
   >
   <figcaption>
-    Current pinned v2 run. The first direction is the fixed active seed used in
-    the English Studio screenshot; the other three values are explicit and
-    recorded in the manifest. This is a modern interpretation, not a
+    Current pinned v2 run. The first direction is the HPO-selected fixed seed
+    used in the English Studio screenshot; the other three values are explicit
+    and recorded in the manifest. This is a modern interpretation, not a
     pixel-identical replay of the 2023 stack.
   </figcaption>
 </figure>
 
-The complete [manifest](../assets/heritage-studio-fixed-seed-en/manifest.json)
-and [provenance](../assets/heritage-studio-fixed-seed-en/README.md) preserve the
+The complete [manifest](../assets/heritage-studio-hero-hpo-en/manifest.json)
+and [HPO provenance](../assets/heritage-studio-hero-hpo-en/README.md) preserve the
 prompt, negative prompt, model revisions, runtime, settings, seeds, and artifact
 hashes.
 
