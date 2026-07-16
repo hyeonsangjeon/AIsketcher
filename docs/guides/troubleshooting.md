@@ -55,7 +55,7 @@ If installation reports an optional-dependency error, install the local
 runtime first:
 
 ```bash
-python -m pip install "AIsketcher[local]>=0.2,<0.3"
+python -m pip install "AIsketcher[local] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
 Do not copy a partial Hugging Face cache into AIsketcher's managed directory.

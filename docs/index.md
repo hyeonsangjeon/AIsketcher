@@ -16,6 +16,7 @@ are then recorded together.
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [한국어 빠른 시작](ko/quickstart.md){ .md-button }
+[See the Studio](studio/simple-advanced.md){ .md-button }
 
 <a class="hero-art" href="canonical-sample/">
   <img src="assets/aisketcher-social-preview-github.jpg" alt="Pocket Kingdom paper-art hero concept for AIsketcher">
@@ -27,12 +28,21 @@ are then recorded together.
 </p>
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
 ```
 
-This opens the bundled Guided Sample without downloading a model. The
-[configuration reference](reference/configuration.md) explains the first-run
-YAML and project overrides.
+This launches Studio. Select **Try the guided sample** to open the bundled
+fixture without downloading a model. Run `aisketcher init` only for the first
+launch; omit it when settings already exist. The
+[configuration reference](reference/configuration.md) explains the YAML and
+project overrides.
+
+[![AIsketcher Studio Korean Simple view with a sketch, selected result, and four design directions](assets/aisketcher-studio-guided-sample-ko.jpg)](assets/aisketcher-studio-guided-sample-ko.jpg)
+
+*Actual local Guided Sample in the Korean UI. The empty controls on the left are
+for a new study; the read-only fixture is open on the right. Select the image to
+inspect the full-size interface. English is available from the top-right
+language switch.*
 
 ## Built for design decisions
 
@@ -69,8 +79,7 @@ shows the input, all seeds, result, and evidence together.
 
 ## Release status
 
-The repository documents version 0.2.0. PyPI is the source of truth for public
-package availability, and documentation deployment remains a separate
-maintainer action; see the
+The repository documents version 0.2.0. Until PyPI lists that version, use the
+reviewed wheel attached to the GitHub release as shown above. See the
 [changelog](changelog.md) and [0.2.0 release notes](releases/0.2.0.md) for the
 current boundary.

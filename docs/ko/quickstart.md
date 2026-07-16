@@ -14,7 +14,9 @@ AIsketcher는 한 장의 스케치에서 여러 디자인 방향을 탐색하고
 첨부되어 있습니다. PyPI에 v0.2.0이 표시될 때까지 아래의 정확한 wheel URL을
 사용하세요.
 
-기본 패키지에는 Torch, Diffusers, 모델 파일, 웹앱이 포함되지 않습니다.
+기본 패키지에는 Torch, Diffusers, 모델 파일, Gradio 실행 환경이 포함되지
+않습니다. Studio 코드와 가이드 샘플은 기본 wheel에 들어 있으며 `demo`
+선택 의존성이 화면을 실행할 Gradio 환경을 추가합니다.
 
 ```bash
 python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
@@ -26,7 +28,7 @@ python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/
 python -m pip install "AIsketcher[local] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
-Studio와 첫 환경설정 명령은 `demo` 선택 의존성으로 설치합니다.
+Studio 화면을 사용하려면 `demo` 선택 의존성을 설치합니다.
 
 ```bash
 python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
@@ -34,13 +36,14 @@ aisketcher init
 aisketcher studio
 ```
 
-한 줄로 처음 실행하려면 다음 명령을 사용합니다.
+한 줄로 처음 실행하려면 다음 명령을 사용합니다. 이미 설정 파일이 있다면
+`aisketcher init &&` 부분은 빼세요.
 
 ```bash
 python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
 ```
 
-`init`은 버전이 명시된 사용자 YAML 설정을 만들며 모델을 받지 않습니다.
+`init`은 최초 한 번 버전이 명시된 사용자 YAML 설정을 만들며 모델을 받지 않습니다.
 기존 파일은 보호하고, 다른 위치가 필요할 때만 `--path`를 사용합니다.
 Studio의 **Guided Sample**은 패키지에 포함된 익명 source, v0.2 Canny
 control, 네 개의 실제 로컬 생성 후보, 선택 정보, 검증용 manifest를 읽기
@@ -110,6 +113,13 @@ variations.export("design-study")
 두 화면은 같은 작업 상태를 공유합니다. Advanced에서 값을 변경한 뒤
 Simple로 돌아오면 `Advanced overrides active` 표시와 초기화 버튼이
 나타납니다.
+
+[![AIsketcher Studio 한국어 Simple 화면: 입력 스케치, 선택 결과, 네 개 방향과 다음 작업](../assets/aisketcher-studio-guided-sample-ko.jpg)](../assets/aisketcher-studio-guided-sample-ko.jpg)
+
+*모델 없이 번들 가이드 샘플을 연 실제 로컬 화면입니다. 이미지를 누르면
+크게 볼 수 있습니다. 왼쪽의 빈 입력란은 새 작업용이고 오른쪽에는 읽기
+전용 fixture가 열려 있습니다. 모델 없이 비교·선택·내보내기를 체험할 수
+있고, 새 탐색과 발전은 로컬 preset을 준비해 별도 study에서 진행합니다.*
 
 ## 알아둘 점
 

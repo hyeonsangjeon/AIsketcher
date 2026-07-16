@@ -1,0 +1,18 @@
+{
+  "schema": "aisketcher.ui-screenshot-provenance/v1",
+  "asset": "aisketcher-studio-guided-sample-ko.jpg",
+  "asset_sha256": "503600192fa509bb3e78badfafc4a370f204f8415e74cf7f069ff24edd256e68",
+  "asset_bytes": 184337,
+  "dimensions": [1280, 946],
+  "captured_at": "2026-07-16",
+  "captured_from_commit": "cba38982b8f12765ca4736648c46dd8a0a3c0800",
+  "surface": "packaged local Gradio Studio",
+  "view": "Simple",
+  "language": "ko",
+  "fixture": "pocket-kingdom",
+  "fixture_manifest": "pocket-kingdom/manifest.json",
+  "fixture_manifest_sha256": "97f61d5033d4593d2f49e54108216d0a56372ff55792f0d7c130ca1a04358634",
+  "model_downloaded_for_capture": false,
+  "private_user_data_present": false,
+  "license_notice": "../../ARTWORK_LICENSE.md"
+}
