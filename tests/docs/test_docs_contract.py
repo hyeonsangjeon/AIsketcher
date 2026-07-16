@@ -88,6 +88,46 @@ def test_social_preview_has_explicit_non_execution_provenance() -> None:
     assert "aisketcher-social-preview-github.jpg" in override
 
 
+def test_studio_screenshot_is_real_documented_and_traceable() -> None:
+    image = DOCS / "assets/aisketcher-studio-guided-sample-ko.jpg"
+    provenance = json.loads(
+        (DOCS / "assets/aisketcher-studio-guided-sample-ko.provenance.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert provenance["schema"] == "aisketcher.ui-screenshot-provenance/v1"
+    assert provenance["private_user_data_present"] is False
+    assert provenance["model_downloaded_for_capture"] is False
+    assert image.stat().st_size == provenance["asset_bytes"]
+    assert hashlib.sha256(image.read_bytes()).hexdigest() == provenance["asset_sha256"]
+    manifest = DOCS / "assets" / provenance["fixture_manifest"]
+    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == provenance[
+        "fixture_manifest_sha256"
+    ]
+    assert (image.parent / provenance["license_notice"]).resolve().is_file()
+
+    image_module = pytest.importorskip("PIL.Image")
+    with image_module.open(image) as opened:
+        assert list(opened.size) == provenance["dimensions"] == [1280, 946]
+        assert opened.format == "JPEG"
+        assert not opened.getexif()
+        metadata = {
+            key.lower()
+            for key, value in opened.info.items()
+            if value not in (None, b"", "")
+        }
+        assert not metadata & {"exif", "xmp", "xml", "photoshop", "icc_profile"}
+
+    for document in (
+        ROOT / "README.md",
+        DOCS / "index.md",
+        DOCS / "studio/simple-advanced.md",
+        DOCS / "ko/quickstart.md",
+    ):
+        assert image.name in document.read_text(encoding="utf-8")
+
+
 def test_heritage_seed_study_is_new_hash_verified_evidence() -> None:
     root = DOCS / "assets/heritage-seed-study"
     provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))

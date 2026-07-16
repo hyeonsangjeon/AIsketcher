@@ -2,11 +2,12 @@
 
 The Gradio Studio is an MVP interface over the same package API. Simple and
 Advanced are two views of one canonical recipe and one selection history. The
-`demo` extra installs its packaged console command and reviewed Guided Sample.
+Studio code, console command, and reviewed Guided Sample are packaged in the
+base wheel; the `demo` extra adds the Gradio runtime needed to launch them.
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3"
-aisketcher init
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+aisketcher init  # First run only; omit when settings already exist.
 aisketcher studio
 ```
 
@@ -17,6 +18,17 @@ normal configuration order is documented in the
 
 For development, `python -m examples.studio_app.app` remains a thin compatibility
 entry point over the packaged app in an editable checkout.
+
+[![AIsketcher Studio Korean Simple view showing the input, selected result, four candidates, and next actions](../assets/aisketcher-studio-guided-sample-ko.jpg)](../assets/aisketcher-studio-guided-sample-ko.jpg)
+
+*Actual local Guided Sample in Korean. Select the screenshot to open it full
+size. The English UI has the same layout.*
+
+The empty controls on the left are for a new user study. The screenshot has the
+read-only fixture open on the right: compare its input and selected result,
+inspect four directions, choose a candidate, or export. Refinement and a new
+exploration require a local preset and a new study. No model was downloaded and
+no private upload was used for this capture.
 
 ## Simple is the default
 
@@ -67,8 +79,8 @@ was generated from new input.
 The package includes the reviewed anonymous source, exact prepared
 input and Canny control, four real locally generated candidates, selected
 direction, and matching manifest. Guided Sample is available immediately after
-installing the `demo` extra and remains read-only until you explicitly prepare
-a local model.
+installing the `demo` extra and always remains read-only. To refine or explore,
+prepare a local model and start a new study instead of altering the fixture.
 
 ## Local-only safety defaults
 

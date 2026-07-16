@@ -44,7 +44,8 @@ python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/
 ```
 
 The lightweight SDK does not install Torch, Diffusers, model weights, or the
-web app.
+Gradio runtime. Studio code and its Guided Sample are packaged; the `demo`
+extra adds the runtime needed to launch the UI.
 
 For development from this repository:
 
@@ -73,6 +74,42 @@ includes a reviewed four-direction fixture with matching hashes and a real
 Guided Sample works on CPU. Live local generation requires CUDA or experimental
 Apple Silicon MPS; CPU generation is disabled by default so users do not fetch
 7–9 GB of model data only to discover an unsupported runtime.
+
+## Studio
+
+The packaged Gradio Studio is the fastest way to understand the workflow. This
+is the actual Korean Simple view with the bundled, model-free Guided Sample
+open:
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-guided-sample-ko.jpg">
+    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-guided-sample-ko.jpg" width="1200" alt="AIsketcher Studio Korean Simple view showing the input sketch, selected result, four design directions, and refinement actions">
+  </a>
+</p>
+<p align="center"><sub>Actual local Studio · Guided Sample · no model download · select the image to open it full size</sub></p>
+
+The empty controls on the left are for a new user study. This screenshot has
+the read-only fixture open on the right: compare its input and result, inspect
+four seeded directions, select a candidate, or export it. Refinement and a new
+exploration require preparing a local preset and starting a new study.
+
+- **Simple** asks for a sketch, a one-sentence brief, a work type, and a
+  Loose/Balanced/Faithful structure choice.
+- **Advanced** exposes model, Canny, generation, seed, variation, export, and
+  replay controls without discarding the Simple session.
+
+Launch it after installing the `demo` extra:
+
+```bash
+aisketcher init  # First run only; omit when settings already exist.
+aisketcher studio
+```
+
+Start with Guided Sample when no model is installed. See the
+[Studio guide](https://hyeonsangjeon.github.io/AIsketcher/studio/simple-advanced/)
+and [configuration reference](https://hyeonsangjeon.github.io/AIsketcher/reference/configuration/)
+for Advanced controls, local-only defaults, versioned YAML, and project
+overrides.
 
 ## Python workflow
 
@@ -127,32 +164,6 @@ backend metadata. Do not put secrets or private paths in prompts, profiles, or
 custom backend identifiers. See the
 [complete SDK workflow](https://hyeonsangjeon.github.io/AIsketcher/sdk/workflow/)
 and [privacy model](https://hyeonsangjeon.github.io/AIsketcher/guides/privacy/).
-
-## Studio
-
-The included Gradio app has two views backed by the same recipe and selection:
-
-- **Simple** asks for a sketch, a one-sentence brief, a work type, and a
-  Loose/Balanced/Faithful structure choice.
-- **Advanced** exposes model, Canny, generation, seed, variation, export, and
-  replay controls without discarding the Simple session.
-
-Once the optional demo is installed, launch it with:
-
-```bash
-aisketcher init
-aisketcher studio
-```
-
-Start with Guided Sample when no model is installed. It opens the bundled,
-verified Pocket Kingdom study in read-only mode. See the
-[Studio guide](https://hyeonsangjeon.github.io/AIsketcher/studio/simple-advanced/)
-for its current availability and local-only defaults. The versioned YAML,
-resolution order, cache settings, and project overrides are documented in the
-[configuration reference](https://hyeonsangjeon.github.io/AIsketcher/reference/configuration/).
-
-Repository contributors can still use `python -m examples.studio_app.app` as a
-thin compatibility launcher; installed users do not need a source checkout.
 
 ## Canonical example
 
