@@ -37,12 +37,16 @@ launch; omit it when settings already exist. The
 [configuration reference](reference/configuration.md) explains the YAML and
 project overrides.
 
-[![AIsketcher Studio Korean Simple view with a sketch, selected result, and four design directions](assets/aisketcher-studio-guided-sample-ko.jpg)](assets/aisketcher-studio-guided-sample-ko.jpg)
+[![AIsketcher Studio English Simple view with a privacy-reviewed family sketch, selected result, four deterministic directions, and manifest-backed settings](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)
 
-*Actual local Guided Sample in the Korean UI. The empty controls on the left are
-for a new study; the read-only fixture is open on the right. Select the image to
-inspect the full-size interface. English is available from the top-right
-language switch.*
+*Actual local English Studio with the selected direction fixed to seed
+`6764547109648557242` and pinned `sdxl-canny-lite@1`. Select the image to
+inspect the full-size interface.*
+
+The documentation-only fixture displays its prompt, profile, and structure
+directly from the authenticated manifest. It is separate from the bundled
+Pocket Kingdom Guided Sample. Model weights were already local, so this
+capture required no model download or image upload.
 
 ## Built for design decisions
 

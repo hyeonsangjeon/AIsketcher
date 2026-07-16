@@ -20,5 +20,4 @@ the public v2 documentation. The legacy JPEG was not copied because it contains
 camera and GPS EXIF. Do not infer or add a child's name to public documentation.
 
 The source and generated artwork are not covered by the repository's MIT
-license. See [`ARTWORK_LICENSE.md`](../../../ARTWORK_LICENSE.md).
-
+license. They remain subject to the root `ARTWORK_LICENSE.md`.

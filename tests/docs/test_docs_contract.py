@@ -88,44 +88,128 @@ def test_social_preview_has_explicit_non_execution_provenance() -> None:
     assert "aisketcher-social-preview-github.jpg" in override
 
 
-def test_studio_screenshot_is_real_documented_and_traceable() -> None:
-    image = DOCS / "assets/aisketcher-studio-guided-sample-ko.jpg"
-    provenance = json.loads(
-        (DOCS / "assets/aisketcher-studio-guided-sample-ko.provenance.json").read_text(
-            encoding="utf-8"
-        )
+def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
+    image_module = pytest.importorskip("PIL.Image")
+    contracts = (
+        {
+            "asset": "aisketcher-studio-heritage-fixed-seed-en.jpg",
+            "language": "en",
+            "documents": (
+                ROOT / "README.md",
+                DOCS / "index.md",
+                DOCS / "studio/simple-advanced.md",
+            ),
+            "excluded": (DOCS / "ko/quickstart.md",),
+        },
+        {
+            "asset": "aisketcher-studio-guided-sample-ko.jpg",
+            "language": "ko",
+            "documents": (DOCS / "ko/quickstart.md",),
+            "excluded": (
+                ROOT / "README.md",
+                DOCS / "index.md",
+                DOCS / "studio/simple-advanced.md",
+            ),
+        },
     )
 
-    assert provenance["schema"] == "aisketcher.ui-screenshot-provenance/v1"
-    assert provenance["private_user_data_present"] is False
-    assert provenance["model_downloaded_for_capture"] is False
-    assert image.stat().st_size == provenance["asset_bytes"]
-    assert hashlib.sha256(image.read_bytes()).hexdigest() == provenance["asset_sha256"]
-    manifest = DOCS / "assets" / provenance["fixture_manifest"]
-    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == provenance[
-        "fixture_manifest_sha256"
+    for contract in contracts:
+        image = DOCS / "assets" / contract["asset"]
+        provenance_path = image.with_name(f"{image.stem}.provenance.json")
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+
+        assert provenance["schema"] == "aisketcher.ui-screenshot-provenance/v1"
+        assert provenance["language"] == contract["language"]
+        assert provenance["private_user_data_present"] is False
+        assert provenance["model_downloaded_for_capture"] is False
+        assert image.stat().st_size == provenance["asset_bytes"]
+        assert hashlib.sha256(image.read_bytes()).hexdigest() == provenance[
+            "asset_sha256"
+        ]
+        manifest = DOCS / "assets" / provenance["fixture_manifest"]
+        assert hashlib.sha256(manifest.read_bytes()).hexdigest() == provenance[
+            "fixture_manifest_sha256"
+        ]
+        assert (image.parent / provenance["license_notice"]).resolve().is_file()
+
+        with image_module.open(image) as opened:
+            assert list(opened.size) == provenance["dimensions"] == [1280, 946]
+            assert opened.format == "JPEG"
+            assert not opened.getexif()
+            metadata = {
+                key.lower()
+                for key, value in opened.info.items()
+                if value not in (None, b"", "")
+            }
+            assert not metadata & {"exif", "xmp", "xml", "photoshop", "icc_profile"}
+
+        for document in contract["documents"]:
+            assert image.name in document.read_text(encoding="utf-8")
+        for document in contract["excluded"]:
+            assert image.name not in document.read_text(encoding="utf-8")
+
+    english_provenance = json.loads(
+        (
+            DOCS
+            / "assets/aisketcher-studio-heritage-fixed-seed-en.provenance.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert english_provenance["selected_seed"] == 6764547109648557242
+    fixture_provenance = DOCS / "assets" / english_provenance["fixture_provenance"]
+    assert hashlib.sha256(fixture_provenance.read_bytes()).hexdigest() == (
+        english_provenance["fixture_provenance_sha256"]
+    )
+    assert english_provenance["fixture_generated_with_model"] is True
+    assert english_provenance["image_uploaded_for_capture"] is False
+
+
+def test_studio_heritage_fixture_is_fixed_seed_and_hash_verified() -> None:
+    root = DOCS / "assets/heritage-studio-fixed-seed-en"
+    provenance = json.loads((root / "provenance.json").read_text(encoding="utf-8"))
+    manifest_path = root / provenance["generation"]["manifest"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == provenance[
+        "generation"
+    ]["manifest_sha256"]
+    assert provenance["source"]["camera_or_gps_metadata_present"] is False
+    assert provenance["source"]["private_name_present"] is False
+    assert provenance["heritage_record"]["legacy_translation_recovered"] is False
+    assert provenance["generation"]["offline"] is True
+    assert provenance["generation"]["downloaded_bytes"] == 0
+
+    selected = provenance["generation"]["selected_candidate"]
+    assert manifest["selection"] == selected
+    selected_candidate = next(
+        candidate for candidate in manifest["candidates"] if candidate["id"] == selected
+    )
+    assert selected_candidate["seed"] == provenance["generation"]["selected_seed"]
+    assert selected_candidate["seed"] == 6764547109648557242
+    assert manifest["seed_plan"] == {
+        "mode": "explicit",
+        "seeds": [
+            6764547109648557242,
+            6854547109648557242,
+            6634547109688557242,
+            6764547109648557243,
+        ],
+    }
+    assert manifest["recipe"]["preset"] == "sdxl-canny-lite@1"
+    assert manifest["recipe"]["steps"] == 32
+    assert manifest["recipe"]["guidance_scale"] == 6.5
+    assert manifest["recipe"]["control_strength"] == 0.55
+    assert manifest["source"]["canny"] == {
+        "aperture_size": 3,
+        "high": 160,
+        "l2_gradient": False,
+        "low": 140,
+    }
+    assert manifest["recipe"]["prompt"] == provenance["heritage_record"][
+        "effective_prompt_en"
     ]
-    assert (image.parent / provenance["license_notice"]).resolve().is_file()
-
-    image_module = pytest.importorskip("PIL.Image")
-    with image_module.open(image) as opened:
-        assert list(opened.size) == provenance["dimensions"] == [1280, 946]
-        assert opened.format == "JPEG"
-        assert not opened.getexif()
-        metadata = {
-            key.lower()
-            for key, value in opened.info.items()
-            if value not in (None, b"", "")
-        }
-        assert not metadata & {"exif", "xmp", "xml", "photoshop", "icc_profile"}
-
-    for document in (
-        ROOT / "README.md",
-        DOCS / "index.md",
-        DOCS / "studio/simple-advanced.md",
-        DOCS / "ko/quickstart.md",
-    ):
-        assert image.name in document.read_text(encoding="utf-8")
+    for descriptor in manifest["files"].values():
+        artifact = root / descriptor["path"]
+        assert hashlib.sha256(artifact.read_bytes()).hexdigest() == descriptor["sha256"]
 
 
 def test_heritage_seed_study_is_new_hash_verified_evidence() -> None:

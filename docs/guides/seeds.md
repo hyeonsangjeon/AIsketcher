@@ -88,6 +88,44 @@ This is a seed-compatibility study, not a claim that v2 reproduces the complete
 
 The legacy stack did not pin model revisions, so this evidence is preserved as
 a historical result rather than promised as a pixel-identical v2 replay.
+
+### 2026 Studio hero interpretation
+
+The English Studio documentation uses a separate, visually directed v2 study.
+Its selected first direction keeps the exact active seed
+`6764547109648557242`; the model, prompt, and rendering recipe are deliberately
+modern. The English prompt is a human-written synthesis of the lesson brief and
+saved runtime prompt, not a claimed recovery of the old AWS translation.
+
+| Setting | Studio hero study |
+| --- | --- |
+| Preset | pinned `sdxl-canny-lite@1` |
+| Outputs | 4 explicit seeds; no random seed |
+| Selected seed | `6764547109648557242` |
+| Steps / CFG | 32 / 6.5 |
+| Canny low / high | 140 / 160 |
+| Control strength | 0.55 |
+
+<figure class="canonical-source">
+  <img
+    src="../../assets/heritage-studio-fixed-seed-en/contact-sheet.png"
+    alt="Four vivid pen-and-watercolor AIsketcher directions generated for the fixed-seed English Studio documentation fixture"
+    data-lightbox
+    data-caption="Current Studio hero study: the verified active seed first, followed by three explicit comparison seeds"
+  >
+  <figcaption>
+    Current pinned v2 run. The first direction is the fixed active seed used in
+    the English Studio screenshot; the other three values are explicit and
+    recorded in the manifest. This is a modern interpretation, not a
+    pixel-identical replay of the 2023 stack.
+  </figcaption>
+</figure>
+
+The complete [manifest](../assets/heritage-studio-fixed-seed-en/manifest.json)
+and [provenance](../assets/heritage-studio-fixed-seed-en/README.md) preserve the
+prompt, negative prompt, model revisions, runtime, settings, seeds, and artifact
+hashes.
+
 AIsketcher 0.2 separately reran the three notebook values with its current
 pinned recipe. The current images are retained as compatibility evidence, not
 as a visual recommendation:
