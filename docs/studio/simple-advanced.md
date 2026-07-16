@@ -19,16 +19,17 @@ normal configuration order is documented in the
 For development, `python -m examples.studio_app.app` remains a thin compatibility
 entry point over the packaged app in an editable checkout.
 
-[![AIsketcher Studio Korean Simple view showing the input, selected result, four candidates, and next actions](../assets/aisketcher-studio-guided-sample-ko.jpg)](../assets/aisketcher-studio-guided-sample-ko.jpg)
+[![AIsketcher Studio English Simple view showing a privacy-reviewed family sketch, selected result, four deterministic directions, and manifest-backed recipe](../assets/aisketcher-studio-heritage-fixed-seed-en.jpg)](../assets/aisketcher-studio-heritage-fixed-seed-en.jpg)
 
-*Actual local Guided Sample in Korean. Select the screenshot to open it full
-size. The English UI has the same layout.*
+*Actual local English Studio. Select the screenshot to open it full size.*
 
-The empty controls on the left are for a new user study. The screenshot has the
-read-only fixture open on the right: compare its input and selected result,
-inspect four directions, choose a candidate, or export. Refinement and a new
-exploration require a local preset and a new study. No model was downloaded and
-no private upload was used for this capture.
+For this capture, Studio was launched with a documentation-only,
+privacy-reviewed family-sketch fixture. The visible prompt, profile, and
+structure settings come from its authenticated manifest, and the selected
+direction is fixed to seed `6764547109648557242` with pinned preset
+`sdxl-canny-lite@1`. This fixture is separate from the bundled Pocket Kingdom
+Guided Sample. Model weights were already local, so the capture caused no model
+download or image upload.
 
 ## Simple is the default
 

@@ -78,20 +78,21 @@ Apple Silicon MPS; CPU generation is disabled by default so users do not fetch
 ## Studio
 
 The packaged Gradio Studio is the fastest way to understand the workflow. This
-is the actual Korean Simple view with the bundled, model-free Guided Sample
+is the actual English Simple view with a documentation-only heritage study
 open:
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-guided-sample-ko.jpg">
-    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-guided-sample-ko.jpg" width="1200" alt="AIsketcher Studio Korean Simple view showing the input sketch, selected result, four design directions, and refinement actions">
+  <a href="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg">
+    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg" width="1200" alt="AIsketcher Studio English Simple view showing a privacy-reviewed family sketch, its selected result, four deterministic directions, and manifest-backed settings">
   </a>
 </p>
-<p align="center"><sub>Actual local Studio · Guided Sample · no model download · select the image to open it full size</sub></p>
+<p align="center"><sub>Actual local Studio · selected seed 6764547109648557242 · pinned sdxl-canny-lite@1 · select the image to open it full size</sub></p>
 
-The empty controls on the left are for a new user study. This screenshot has
-the read-only fixture open on the right: compare its input and result, inspect
-four seeded directions, select a candidate, or export it. Refinement and a new
-exploration require preparing a local preset and starting a new study.
+This privacy-reviewed family-sketch fixture is used only for documentation and
+is separate from the bundled Pocket Kingdom Guided Sample. Its authenticated
+manifest fills the visible prompt, profile, and structure controls, and fixes
+the selected direction to seed `6764547109648557242`. Model weights were
+already local, so the capture caused no model download or image upload.
 
 - **Simple** asks for a sketch, a one-sentence brief, a work type, and a
   Loose/Balanced/Faithful structure choice.

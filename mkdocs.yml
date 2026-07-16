@@ -46,6 +46,7 @@ nav:
       - Canonical sample: canonical-sample.md
       - Canonical asset contract: assets/pocket-kingdom/README.md
       - Heritage seed asset contract: assets/heritage-seed-study/README.md
+      - Studio hero asset contract: assets/heritage-studio-fixed-seed-en/README.md
   - Python SDK:
       - Complete workflow: sdk/workflow.md
       - Prepare: sdk/prepare.md

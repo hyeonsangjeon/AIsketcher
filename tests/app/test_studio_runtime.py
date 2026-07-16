@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
+from aisketcher.manifest import canonical_sha256
 from aisketcher.studio_app.i18n import navigation_choices, structure_choices, text
 from aisketcher.studio_app.runtime import (
     MAX_REPLAY_FILES,
@@ -239,6 +240,20 @@ def test_bundled_guided_sample_is_hash_verified_and_ready() -> None:
     assert sample.selected_index == 3
     assert sample.candidates[3].seed == 1197419234
     assert sample.candidates[3].label == "closest structure"
+    assert sample.prompt
+    assert sample.profile == "graphic_design"
+    assert sample.structure == "balanced"
+
+
+def test_guided_sample_response_surfaces_manifest_recipe(tmp_path: Path) -> None:
+    controller = AppController(workspace_root=tmp_path / "work")
+
+    opened = controller.open_guided_sample(controller.initial_state("en"))
+
+    sample = controller.guided.load()
+    assert opened.prompt == sample.prompt
+    assert opened.profile == sample.profile
+    assert opened.structure == sample.structure
 
 
 def test_guided_sample_export_round_trips_every_declared_artifact(tmp_path: Path) -> None:
@@ -363,8 +378,109 @@ def test_guided_sample_reads_canonical_manifest_without_relabeling_external_art(
 
     assert sample.selected_index == 1
     assert sample.provenance == "GPT Image 2 reference"
+    assert sample.prompt is None
+    assert sample.profile is None
+    assert sample.structure is None
     assert sample.candidates[0].label == "Reference direction"
     assert "AIsketcher" not in " ".join(candidate.label for candidate in sample.candidates)
+
+
+def test_guided_sample_preserves_unsupported_recipe_without_overwriting_controls(
+    tmp_path: Path,
+) -> None:
+    for filename in ("source.png", "candidate.png"):
+        Image.new("RGB", (8, 8), "white").save(tmp_path / filename)
+    recipe = {
+        "prompt": "A valid prompt",
+        "profile": "unsupported-profile",
+        "structure": "balanced",
+    }
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": "aisketcher.manifest/v1",
+                "files": {
+                    filename.removesuffix(".png"): {
+                        "path": filename,
+                        "sha256": sha256((tmp_path / filename).read_bytes()).hexdigest(),
+                    }
+                    for filename in ("source.png", "candidate.png")
+                },
+                "candidates": [{"path": "candidate.png"}],
+                "recipe": recipe,
+                "recipe_sha256": canonical_sha256(recipe),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sample = GuidedSampleCatalog(tmp_path).load()
+
+    assert sample.prompt == "A valid prompt"
+    assert sample.profile is None
+    assert sample.structure == "balanced"
+
+
+def test_guided_sample_does_not_display_recipe_with_a_mismatched_hash(
+    tmp_path: Path,
+) -> None:
+    for filename in ("source.png", "candidate.png"):
+        Image.new("RGB", (8, 8), "white").save(tmp_path / filename)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": "aisketcher.manifest/v1",
+                "files": {
+                    filename.removesuffix(".png"): {
+                        "path": filename,
+                        "sha256": sha256((tmp_path / filename).read_bytes()).hexdigest(),
+                    }
+                    for filename in ("source.png", "candidate.png")
+                },
+                "candidates": [{"path": "candidate.png"}],
+                "recipe": {
+                    "prompt": "A tampered prompt",
+                    "profile": "graphic_design",
+                    "structure": "balanced",
+                },
+                "recipe_sha256": "0" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sample = GuidedSampleCatalog(tmp_path).load()
+
+    assert sample.prompt is None
+    assert sample.profile is None
+    assert sample.structure is None
+
+
+def test_guided_sample_ignores_a_non_ascii_recipe_hash(tmp_path: Path) -> None:
+    for filename in ("source.png", "candidate.png"):
+        Image.new("RGB", (8, 8), "white").save(tmp_path / filename)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": "aisketcher.manifest/v1",
+                "files": {
+                    filename.removesuffix(".png"): {
+                        "path": filename,
+                        "sha256": sha256((tmp_path / filename).read_bytes()).hexdigest(),
+                    }
+                    for filename in ("source.png", "candidate.png")
+                },
+                "candidates": [{"path": "candidate.png"}],
+                "recipe": {"prompt": "Do not display this"},
+                "recipe_sha256": "é" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sample = GuidedSampleCatalog(tmp_path).load()
+
+    assert sample.prompt is None
 
 
 def test_guided_sample_rejects_paths_outside_bundle(tmp_path: Path) -> None:

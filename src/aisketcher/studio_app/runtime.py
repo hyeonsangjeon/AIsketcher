@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import secrets
 import shutil
 import stat
@@ -25,6 +26,7 @@ from importlib.resources import files
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
+from ..manifest import canonical_sha256
 from .i18n import normalize_language, text
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -160,6 +162,44 @@ class GuidedSample:
     candidates: tuple[CandidateView, ...]
     selected_index: int
     provenance: str
+    prompt: str | None = None
+    profile: str | None = None
+    structure: str | None = None
+
+
+def _recipe_control_values(
+    manifest: Mapping[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    """Return only manifest-authenticated values the Simple UI can represent."""
+
+    prompt = profile = structure = None
+    recipe = manifest.get("recipe")
+    recipe_hash = manifest.get("recipe_sha256")
+    if not (
+        isinstance(recipe, Mapping)
+        and isinstance(recipe_hash, str)
+        and re.fullmatch(r"[0-9a-fA-F]{64}", recipe_hash)
+        and secrets.compare_digest(canonical_sha256(recipe), recipe_hash.lower())
+    ):
+        return prompt, profile, structure
+    raw_prompt = recipe.get("prompt")
+    if isinstance(raw_prompt, str) and raw_prompt.strip() and len(raw_prompt) <= 600:
+        prompt = raw_prompt.strip()
+    raw_profile = recipe.get("profile")
+    if isinstance(raw_profile, str) and raw_profile in {
+        "product_design",
+        "graphic_design",
+        "sketch",
+    }:
+        profile = raw_profile
+    raw_structure = recipe.get("structure")
+    if isinstance(raw_structure, str) and raw_structure in {
+        "loose",
+        "balanced",
+        "faithful",
+    }:
+        structure = raw_structure
+    return prompt, profile, structure
 
 
 class GuidedSampleCatalog:
@@ -279,6 +319,7 @@ class GuidedSampleCatalog:
             provenance = str(
                 manifest.get("generator") or manifest.get("backend") or "manifest-declared sample"
             )
+        prompt, profile, structure = _recipe_control_values(manifest)
         return GuidedSample(
             root=self.root.resolve(),
             manifest_path=manifest_path.resolve(),
@@ -286,6 +327,9 @@ class GuidedSampleCatalog:
             candidates=tuple(candidates),
             selected_index=selected,
             provenance=provenance,
+            prompt=prompt,
+            profile=profile,
+            structure=structure,
         )
 
     @property
@@ -387,6 +431,10 @@ class AppResponse:
     gallery: tuple[tuple[str, str], ...]
     recommendation: str
     status: str
+    prompt: str | None = None
+    profile: str | None = None
+    structure: str | None = None
+    sync_recipe_controls: bool = False
 
 
 def _safe_session_dir(root: Path, session_id: str) -> Path:
@@ -1069,6 +1117,10 @@ class AppController:
             gallery=self._gallery(sample.candidates, state.language),
             recommendation=self._recommendation(chosen, state.language),
             status=self._status(record, state),
+            prompt=sample.prompt,
+            profile=sample.profile,
+            structure=sample.structure,
+            sync_recipe_controls=True,
         )
 
     def select_candidate(
@@ -1283,6 +1335,7 @@ class AppController:
         )
         self.registry.put(record)
         state = state.replace(run_id=run_id, selected_index=0, guided=False)
+        prompt, profile, structure = _recipe_control_values(payload)
         return AppResponse(
             state=state.payload(),
             source=str(source)
@@ -1292,6 +1345,10 @@ class AppController:
             gallery=self._gallery(candidates, state.language),
             recommendation=self._recommendation(candidates[0], state.language),
             status=self._status(record, state),
+            prompt=prompt,
+            profile=profile,
+            structure=structure,
+            sync_recipe_controls=True,
         )
 
     def install_model(self, preset: str, confirmed: bool, language: str = "en") -> str:

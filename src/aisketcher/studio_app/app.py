@@ -142,6 +142,10 @@ def _generation_args_for_view(values: Sequence[Any]) -> tuple[Any, ...]:
 
 
 def _response_values(gr: Any, response: AppResponse) -> tuple[Any, ...]:
+    sync_recipe = response.sync_recipe_controls or any(
+        value is not None
+        for value in (response.prompt, response.profile, response.structure)
+    )
     return (
         response.state,
         response.source,
@@ -149,6 +153,9 @@ def _response_values(gr: Any, response: AppResponse) -> tuple[Any, ...]:
         gr.update(value=list(response.gallery)),
         response.recommendation,
         response.status,
+        gr.update(value=response.prompt or "") if sync_recipe else gr.update(),
+        gr.update(value=response.profile or DEFAULT_PROFILE) if sync_recipe else gr.update(),
+        gr.update(value=response.structure or "balanced") if sync_recipe else gr.update(),
     )
 
 
@@ -273,7 +280,7 @@ def build_app(
                 brief = gr.Textbox(
                     label=text(language, "brief"),
                     placeholder=text(language, "brief_placeholder"),
-                    lines=2,
+                    lines=3,
                     max_lines=4,
                     max_length=600,
                     elem_classes="studio-field",
@@ -486,6 +493,9 @@ def build_app(
             gallery,
             recommendation,
             status,
+            brief,
+            profile,
+            structure,
         ]
 
         upload_button.upload(
