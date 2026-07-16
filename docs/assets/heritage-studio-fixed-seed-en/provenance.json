@@ -1,0 +1,46 @@
+{
+  "schema": "aisketcher.studio-heritage-fixture/v1",
+  "status": "complete",
+  "created_on": "2026-07-16",
+  "purpose": "English Gradio Studio hero and documentation example",
+  "source": {
+    "path": "source.png",
+    "sha256": "50f1b2f9bc88c20e45cc38fc8af5e261fab8061fa456c7f9a654e7b8c2017864",
+    "description": "reviewed metadata-free family-artwork derivative",
+    "legacy_jpeg_copied": false,
+    "private_name_present": false,
+    "camera_or_gps_metadata_present": false
+  },
+  "heritage_record": {
+    "repository_url": "https://github.com/hyeonsangjeon/aws-korea-2023-coding-school",
+    "repository_commit": "4b3a22098f239dda18134eb5128094aa9892ed5e",
+    "documented_brief_ko": "알파벳 A, 글자, 추상화, 멋진 펜아트",
+    "recorded_runtime_prompt_ko": "특이한 풍경, 환상적인 그림, 복잡한 나라, 귀여운 케릭터",
+    "effective_prompt_en": "Alphabet A transformed into an unusual fantasy kingdom of cute characters in the sketch's tall pyramid silhouette. Striking pen-and-ink art with jewel-toned watercolor and gouache, vivid cobalt blue, turquoise, coral red, yellow and gold. Expressive faces, crisp fine lines, whimsical polished editorial illustration, clean studio background.",
+    "translation_method": "human-written synthesis for the pinned v2 model",
+    "legacy_translation_recovered": false,
+    "active_seed": 6764547109648557242,
+    "recorded_alternative_seeds": [
+      6854547109648557242,
+      6634547109688557242
+    ],
+    "documentation_layout_seed": 6764547109648557243
+  },
+  "generation": {
+    "manifest": "manifest.json",
+    "manifest_sha256": "70a7b6c505dce3918e6fe825e722f5db441a969b74e6fc8a247c8f5fc827702a",
+    "selected_candidate": "candidate-3690f62cc5e5",
+    "selected_seed": 6764547109648557242,
+    "preset": "sdxl-canny-lite@1",
+    "device": "mps",
+    "offline": true,
+    "downloaded_bytes": 0,
+    "mps_retries": 0
+  },
+  "privacy": {
+    "private_user_data_present": false,
+    "original_filename_retained": false,
+    "public_person_attribution_allowed": false
+  },
+  "artwork_license": "../../../ARTWORK_LICENSE.md"
+}

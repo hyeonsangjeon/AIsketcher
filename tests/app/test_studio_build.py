@@ -118,6 +118,47 @@ def test_generation_response_does_not_open_gallery_preview_automatically() -> No
 
     assert gallery_update == {"value": [("candidate-1.png", "Direction 1")]}
     assert "selected_index" not in gallery_update
+    assert _response_values(gr, response)[6:] == ({}, {}, {})
+
+
+def test_guided_response_populates_manifest_recipe_controls() -> None:
+    gr = SimpleNamespace(update=lambda **values: values)
+    response = AppResponse(
+        state={"session_id": "test"},
+        source="source.png",
+        selected="candidate-1.png",
+        gallery=(("candidate-1.png", "Direction 1"),),
+        recommendation="Recorded direction",
+        status="Ready",
+        prompt="Alphabet A as an intricate fantasy kingdom.",
+        profile="graphic_design",
+        structure="balanced",
+    )
+
+    assert _response_values(gr, response)[6:] == (
+        {"value": "Alphabet A as an intricate fantasy kingdom."},
+        {"value": "graphic_design"},
+        {"value": "balanced"},
+    )
+
+
+def test_recipe_sync_clears_stale_controls_when_manifest_has_no_recipe() -> None:
+    gr = SimpleNamespace(update=lambda **values: values)
+    response = AppResponse(
+        state={"session_id": "test"},
+        source="source.png",
+        selected="candidate-1.png",
+        gallery=(("candidate-1.png", "Direction 1"),),
+        recommendation="Recorded direction",
+        status="Ready",
+        sync_recipe_controls=True,
+    )
+
+    assert _response_values(gr, response)[6:] == (
+        {"value": ""},
+        {"value": "graphic_design"},
+        {"value": "balanced"},
+    )
 
 
 @pytest.mark.skipif(
