@@ -1,4 +1,4 @@
-# Repository automation
+# Release and deployment workflows
 
 All workflows in this directory are preparation only. Nothing in the normal CI
 path publishes a package or deploys documentation.

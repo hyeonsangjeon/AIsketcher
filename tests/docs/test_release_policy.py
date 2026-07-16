@@ -20,6 +20,18 @@ def test_required_workflow_exists(name: str) -> None:
     assert (WORKFLOWS / name).is_file()
 
 
+def test_root_readme_is_not_shadowed_by_github_metadata() -> None:
+    assert (ROOT / "README.md").is_file()
+    shadowing_readmes = [
+        path
+        for path in (ROOT / ".github").iterdir()
+        if path.is_file()
+        and (path.name.casefold() == "readme" or path.stem.casefold() == "readme")
+    ]
+    assert shadowing_readmes == []
+    assert (ROOT / ".github/WORKFLOWS.md").is_file()
+
+
 def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     workflow = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
     assert "permissions:\n  contents: read" in workflow
