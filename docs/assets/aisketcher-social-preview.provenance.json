@@ -1,0 +1,30 @@
+{
+  "schema": "aisketcher.marketing-artwork-provenance/v1",
+  "asset": "aisketcher-social-preview.png",
+  "asset_sha256": "0d912b0fbfeeae6cf4025e40c5a2336b2aa926fea0a303b6d24a1fdb71a523a2",
+  "created_on": "2026-07-16",
+  "dimensions": [
+    1731,
+    909
+  ],
+  "source": {
+    "description": "User-provided Pocket Kingdom hero artwork (Photo 4)",
+    "file_sha256": "08460a8abdf792d709f113fe0d5d2abffe31900c23732a3dcbdffbf731d397ec"
+  },
+  "transformation": "AI-assisted landscape extension with the supplied artwork preserved on the right and text-safe negative space added on the left",
+  "canonical_sdk_output": false,
+  "canonical_evidence": "pocket-kingdom/manifest.json",
+  "c2pa_provenance_embedded": true,
+  "repository_social_preview": {
+    "asset": "aisketcher-social-preview-github.jpg",
+    "asset_sha256": "56c5f86c4f59484137cddfdde92f74f29ceaf80f38f289e4ced7cb79ed05fe44",
+    "dimensions": [
+      1280,
+      640
+    ],
+    "bytes": 227891,
+    "transformation": "Deterministic resize, centered crop, and JPEG compression from the primary marketing artwork",
+    "github_settings_upload_ready": true
+  },
+  "license_notice": "../../ARTWORK_LICENSE.md"
+}

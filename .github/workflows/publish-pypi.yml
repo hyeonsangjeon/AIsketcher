@@ -1,0 +1,90 @@
+name: Publish package to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact package version expected in the built metadata
+        required: true
+        type: string
+      confirm:
+        description: Type "publish" to enable the protected publishing job
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, verify, and publish ${{ inputs.version }}
+    if: ${{ inputs.confirm == 'publish' }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out selected revision
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
+      - name: Verify tagged release ref
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          expected_ref="refs/tags/v${EXPECTED_VERSION}"
+          if [ "${GITHUB_REF}" != "${expected_ref}" ]; then
+            echo "Dispatch this workflow from ${expected_ref}; got ${GITHUB_REF}." >&2
+            exit 1
+          fi
+      - name: Run release tests
+        run: python -m pytest
+      - name: Build wheel and source archive
+        run: python -m build
+      - name: Check package metadata
+        run: python -m twine check dist/*
+      - name: Verify requested version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import email
+          import glob
+          import os
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")
+          if len(wheel) != 1:
+              raise SystemExit(f"expected exactly one wheel, found {len(wheel)}")
+          with zipfile.ZipFile(wheel[0]) as archive:
+              names = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+              if len(names) != 1:
+                  raise SystemExit("wheel must contain exactly one METADATA file")
+              metadata = email.message_from_bytes(archive.read(names[0]))
+          actual = metadata["Version"]
+          expected = os.environ["EXPECTED_VERSION"]
+          if actual != expected:
+              raise SystemExit(f"requested version {expected!r} does not match built version {actual!r}")
+          print(f"verified distribution version {actual}")
+          PY
+      - name: Scan distributable contents
+        run: python tests/docs/scan_distribution.py --repository . dist/*
+      - name: Smoke-test the exact wheel before publication
+        run: |
+          wheel_path="$(python -c 'import glob, os; print(os.path.abspath(glob.glob("dist/*.whl")[0]))')"
+          python -m venv /tmp/aisketcher-wheel-smoke
+          /tmp/aisketcher-wheel-smoke/bin/python -m pip install --upgrade pip
+          /tmp/aisketcher-wheel-smoke/bin/python -m pip install "${wheel_path}[demo]"
+          /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
+          /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@v1.14.0

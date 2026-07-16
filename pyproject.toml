@@ -1,0 +1,126 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "AIsketcher"
+version = "0.2.0"
+description = "Structured visual exploration and reproducible sketch-to-image design lineage"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT AND LicenseRef-AIsketcher-Artwork"
+license-files = ["LICENSE", "ARTWORK_LICENSE.md"]
+authors = [
+  { name = "hyeonsangjeon" },
+]
+keywords = [
+  "controlnet",
+  "design-exploration",
+  "diffusers",
+  "generative-ai",
+  "sketch-to-image",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Artistic Software",
+  "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+  "numpy>=2.0,<3",
+  "opencv-python-headless>=4.10,<6",
+  "pillow>=11,<13",
+  "platformdirs>=4,<5",
+]
+
+[project.scripts]
+aisketcher = "aisketcher.cli:main"
+
+[project.optional-dependencies]
+local = [
+  "accelerate>=1.14,<2",
+  "diffusers>=0.39,<0.40",
+  "huggingface-hub>=1.23,<2",
+  "safetensors>=0.8,<1",
+  "torch>=2.13,<2.14",
+  "transformers>=5.14,<6",
+]
+demo = [
+  "gradio>=6.20,<7",
+]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.7,<10",
+]
+dev = [
+  "build>=1.3,<2",
+  "mypy>=1.18,<2",
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+  "ruff>=0.14,<1",
+  "twine>=6.2,<7",
+]
+
+[project.urls]
+Homepage = "https://github.com/hyeonsangjeon/AIsketcher"
+Documentation = "https://hyeonsangjeon.github.io/AIsketcher/"
+Issues = "https://github.com/hyeonsangjeon/AIsketcher/issues"
+Source = "https://github.com/hyeonsangjeon/AIsketcher"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["AIsketcher"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aisketcher*"]
+
+[tool.setuptools.package-data]
+aisketcher = [
+  "py.typed",
+  "studio_app/styles.css",
+  "studio_app/assets/pocket-kingdom/ARTWORK_NOTICE.md",
+  "studio_app/assets/pocket-kingdom/manifest.json",
+  "studio_app/assets/pocket-kingdom/prepared/*.png",
+  "studio_app/assets/pocket-kingdom/scout/*.png",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "model: requires local diffusion model weights",
+  "mps: requires Apple Silicon MPS",
+  "cuda: requires an NVIDIA CUDA device",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "examples", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["aisketcher"]
+strict = true
+warn_unreachable = true
+
+[tool.coverage.run]
+branch = true
+source = ["aisketcher"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

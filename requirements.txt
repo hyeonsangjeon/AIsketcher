@@ -1,4 +1,0 @@
-opencv-contrib-python
-diffusers
-transformers
-boto3
