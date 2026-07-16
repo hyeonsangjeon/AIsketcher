@@ -105,7 +105,8 @@ def test_readme_exposes_the_packaged_first_run() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "aisketcher init && aisketcher studio" in readme
-    assert 'AIsketcher[demo]>=0.2,<0.3' in readme
+    assert "releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" in readme
+    assert 'AIsketcher[demo] @ https://' in readme
 
 
 def test_distribution_scanner_detects_current_service_token_shapes(tmp_path: Path) -> None:

@@ -1,7 +1,8 @@
 # Release and deployment workflows
 
-All workflows in this directory are preparation only. Nothing in the normal CI
-path publishes a package or deploys documentation.
+Normal CI only validates the repository; it never publishes a package or
+deploys documentation. Release and Pages workflows are separate, manual, and
+review-gated.
 
 - `ci.yml` tests the core SDK, builds documentation strictly, and inspects
   distribution artifacts.
