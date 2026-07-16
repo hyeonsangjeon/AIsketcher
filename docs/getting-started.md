@@ -1,11 +1,15 @@
 # Quick start
 
+The reviewed v0.2.0 wheel is attached to the
+[GitHub release](https://github.com/hyeonsangjeon/AIsketcher/releases/tag/v0.2.0).
+Use the exact wheel URLs below until PyPI lists v0.2.0.
+
 ## Install the layer you need
 
 === "Core SDK"
 
     ```bash
-    python -m pip install "AIsketcher>=0.2,<0.3"
+    python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
     ```
 
     This installs preparation, recipe, lineage, export, and replay types. It
@@ -14,7 +18,7 @@
 === "Local generation"
 
     ```bash
-    python -m pip install "AIsketcher[local]>=0.2,<0.3"
+    python -m pip install "AIsketcher[local] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
     ```
 
     Local presets download their pinned model files only after confirmation.
@@ -22,7 +26,7 @@
 === "Studio"
 
     ```bash
-    python -m pip install "AIsketcher[demo]>=0.2,<0.3"
+    python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
     aisketcher init
     aisketcher studio
     ```
@@ -35,7 +39,7 @@
 For the complete model-free first run:
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
 ```
 
 `aisketcher init` protects an existing settings file. Use `--path` for a
@@ -46,7 +50,7 @@ order and every supported key.
 ## Run a study
 
 ```python
-from aisketcher import Intent, PresetManager, SeedPlan, Studio
+from aisketcher import FakeBackend, Intent, PresetManager, SeedPlan, Studio
 
 preset = "sdxl-canny-lite@1"
 models = PresetManager()
@@ -71,7 +75,7 @@ study = studio.explore(
     seed_plan=SeedPlan.scout(4),
 )
 
-selected = study.pick(1)
+selected = study.pick(1)  # Stable zero-based index: the second candidate.
 variations = studio.vary(
     selected,
     outputs=4,

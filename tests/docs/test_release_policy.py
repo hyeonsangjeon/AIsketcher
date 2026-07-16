@@ -20,6 +20,18 @@ def test_required_workflow_exists(name: str) -> None:
     assert (WORKFLOWS / name).is_file()
 
 
+def test_root_readme_is_not_shadowed_by_github_metadata() -> None:
+    assert (ROOT / "README.md").is_file()
+    shadowing_readmes = [
+        path
+        for path in (ROOT / ".github").iterdir()
+        if path.is_file()
+        and (path.name.casefold() == "readme" or path.stem.casefold() == "readme")
+    ]
+    assert shadowing_readmes == []
+    assert (ROOT / ".github/WORKFLOWS.md").is_file()
+
+
 def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     workflow = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
     assert "permissions:\n  contents: read" in workflow
@@ -93,7 +105,8 @@ def test_readme_exposes_the_packaged_first_run() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "aisketcher init && aisketcher studio" in readme
-    assert 'AIsketcher[demo]>=0.2,<0.3' in readme
+    assert "releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" in readme
+    assert 'AIsketcher[demo] @ https://' in readme
 
 
 def test_distribution_scanner_detects_current_service_token_shapes(tmp_path: Path) -> None:

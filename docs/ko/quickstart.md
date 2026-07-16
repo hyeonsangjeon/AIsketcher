@@ -9,22 +9,27 @@ AIsketcher는 한 장의 스케치에서 여러 디자인 방향을 탐색하고
 
 ## 설치
 
+검수된 v0.2.0 wheel은
+[GitHub Release](https://github.com/hyeonsangjeon/AIsketcher/releases/tag/v0.2.0)에
+첨부되어 있습니다. PyPI에 v0.2.0이 표시될 때까지 아래의 정확한 wheel URL을
+사용하세요.
+
 기본 패키지에는 Torch, Diffusers, 모델 파일, 웹앱이 포함되지 않습니다.
 
 ```bash
-python -m pip install "AIsketcher>=0.2,<0.3"
+python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
 로컬 이미지 생성 기능은 선택 의존성으로 추가합니다.
 
 ```bash
-python -m pip install "AIsketcher[local]>=0.2,<0.3"
+python -m pip install "AIsketcher[local] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
 Studio와 첫 환경설정 명령은 `demo` 선택 의존성으로 설치합니다.
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3"
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 aisketcher init
 aisketcher studio
 ```
@@ -32,7 +37,7 @@ aisketcher studio
 한 줄로 처음 실행하려면 다음 명령을 사용합니다.
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
 ```
 
 `init`은 버전이 명시된 사용자 YAML 설정을 만들며 모델을 받지 않습니다.
@@ -46,13 +51,13 @@ control, 네 개의 실제 로컬 생성 후보, 선택 정보, 검증용 manife
 실제 로컬 생성과 Studio를 함께 설치하려면 다음 명령을 사용합니다.
 
 ```bash
-python -m pip install "AIsketcher[local,demo]>=0.2,<0.3"
+python -m pip install "AIsketcher[local,demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
 ## 기본 흐름
 
 ```python
-from aisketcher import Intent, PresetManager, SeedPlan, Studio
+from aisketcher import FakeBackend, Intent, PresetManager, SeedPlan, Studio
 
 preset = "sdxl-canny-lite@1"
 models = PresetManager()
@@ -77,7 +82,7 @@ study = studio.explore(
     seed_plan=SeedPlan.scout(4),
 )
 
-selected = study.pick(1)
+selected = study.pick(1)  # 0부터 세는 고정 인덱스이므로 두 번째 후보입니다.
 variations = studio.vary(
     selected,
     outputs=4,
@@ -112,8 +117,9 @@ Simple로 돌아오면 `Advanced overrides active` 표시와 초기화 버튼이
   중복도 같은 기술적 관찰만 배지로 제공합니다.
 - strict replay는 입력과 모델 revision이 달라지면 중단합니다. compatible
   replay는 대체된 항목을 보고하고 계속할 수 있습니다.
-- manifest에는 token, 절대경로, 업로드 원본 파일명, EXIF 정보가 들어가지
-  않습니다.
+- 기본 내보내기는 이미지를 EXIF 없이 다시 저장하고, source 파일명을 빼며,
+  backend metadata를 허용 목록으로 제한합니다. prompt, profile, custom backend
+  식별자에는 token이나 비공개 경로를 넣지 마세요.
 - 예제 드로잉과 결과 이미지는 MIT 라이선스 대상이 아닙니다.
 
 다음으로 [전체 SDK 흐름](../sdk/workflow.md),

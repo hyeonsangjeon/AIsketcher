@@ -8,10 +8,6 @@ the direction you pick, creates controlled variations, and exports a replayable
 manifest. It is designed for product designers, graphic designers, and
 sketchers who need more than a one-off image.
 
-> This repository documents AIsketcher 0.2.0. A source checkout is not proof of
-> PyPI publication; verify the version on PyPI or install a reviewed wheel or
-> pinned revision.
-
 <p align="center">
   <a href="https://hyeonsangjeon.github.io/AIsketcher/canonical-sample/">
     <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-social-preview-github.jpg" width="1200" alt="Pocket Kingdom paper-art hero concept for AIsketcher">
@@ -20,8 +16,8 @@ sketchers who need more than a one-off image.
 <p align="center"><sub>Pocket Kingdom hero concept · marketing artwork, not an SDK execution claim · select to inspect the real local source, scout, variations, and replay evidence</sub></p>
 
 [Documentation](https://hyeonsangjeon.github.io/AIsketcher/) ·
-[한국어 빠른 시작](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/ko/quickstart.md) ·
-[Migration from 0.0.x](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/guides/migration.md)
+[한국어 빠른 시작](https://hyeonsangjeon.github.io/AIsketcher/ko/quickstart/) ·
+[Migration from 0.0.x](https://hyeonsangjeon.github.io/AIsketcher/guides/migration/)
 
 ## Why AIsketcher
 
@@ -38,12 +34,17 @@ sketchers who need more than a one-off image.
 
 ## Install
 
-The lightweight SDK does not install Torch, Diffusers, model weights, or the
-web app.
+The reviewed v0.2.0 wheel is attached to the
+[GitHub release](https://github.com/hyeonsangjeon/AIsketcher/releases/tag/v0.2.0).
+Until PyPI lists v0.2.0, install that exact wheel rather than the legacy PyPI
+release:
 
 ```bash
-python -m pip install "AIsketcher>=0.2,<0.3"
+python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
+
+The lightweight SDK does not install Torch, Diffusers, model weights, or the
+web app.
 
 For development from this repository:
 
@@ -54,14 +55,14 @@ python -m pip install -e ".[dev]"
 Install optional local generation or the Studio separately:
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3"        # Guided Sample Studio
-python -m pip install "AIsketcher[local,demo]>=0.2,<0.3"  # Local generation + Studio
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+python -m pip install "AIsketcher[local,demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
 ```
 
 The complete model-free first run is one line:
 
 ```bash
-python -m pip install "AIsketcher[demo]>=0.2,<0.3" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
 ```
 
 Model downloads happen only after you explicitly choose a local preset. Guided
@@ -69,10 +70,14 @@ Sample mode does not require a model or network connection: this repository
 includes a reviewed four-direction fixture with matching hashes and a real
 `aisketcher.manifest/v1` manifest.
 
+Guided Sample works on CPU. Live local generation requires CUDA or experimental
+Apple Silicon MPS; CPU generation is disabled by default so users do not fetch
+7–9 GB of model data only to discover an unsupported runtime.
+
 ## Python workflow
 
 ```python
-from aisketcher import Intent, PresetManager, SeedPlan, Studio
+from aisketcher import FakeBackend, Intent, PresetManager, SeedPlan, Studio
 
 preset = "sdxl-canny-lite@1"
 models = PresetManager()
@@ -97,7 +102,7 @@ study = studio.explore(
     seed_plan=SeedPlan.scout(4),
 )
 
-choice = study.pick(1)
+choice = study.pick(1)  # Stable zero-based index: the second candidate.
 variants = studio.vary(
     choice,
     outputs=4,
@@ -116,11 +121,12 @@ For a network- and model-free workflow test, use
 `Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. Its images are deterministic
 fixtures for code and CI, not model-generated creative results.
 
-The exported manifest contains the resolved recipe and actual seeds. It never
-contains access tokens, absolute local paths, original upload names, or EXIF
-metadata. See the
-[complete SDK workflow](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/sdk/workflow.md)
-and [privacy model](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/guides/privacy.md).
+The exported manifest contains the resolved recipe and actual seeds. Built-in
+exports re-encode images without EXIF, omit source filenames, and allowlist
+backend metadata. Do not put secrets or private paths in prompts, profiles, or
+custom backend identifiers. See the
+[complete SDK workflow](https://hyeonsangjeon.github.io/AIsketcher/sdk/workflow/)
+and [privacy model](https://hyeonsangjeon.github.io/AIsketcher/guides/privacy/).
 
 ## Studio
 
@@ -140,10 +146,10 @@ aisketcher studio
 
 Start with Guided Sample when no model is installed. It opens the bundled,
 verified Pocket Kingdom study in read-only mode. See the
-[Studio guide](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/studio/simple-advanced.md)
+[Studio guide](https://hyeonsangjeon.github.io/AIsketcher/studio/simple-advanced/)
 for its current availability and local-only defaults. The versioned YAML,
 resolution order, cache settings, and project overrides are documented in the
-[configuration reference](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/reference/configuration.md).
+[configuration reference](https://hyeonsangjeon.github.io/AIsketcher/reference/configuration/).
 
 Repository contributors can still use `python -m examples.studio_app.app` as a
 thin compatibility launcher; installed users do not need a source checkout.
