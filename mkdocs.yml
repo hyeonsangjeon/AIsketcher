@@ -1,0 +1,95 @@
+site_name: AIsketcher
+site_description: Structured visual exploration, controlled variation, and reproducible creative handoff
+site_url: https://hyeonsangjeon.github.io/AIsketcher/
+repo_url: https://github.com/hyeonsangjeon/AIsketcher
+repo_name: hyeonsangjeon/AIsketcher
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 hyeonsangjeon — artwork excluded from the MIT License
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  language: en
+  features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Quick start: getting-started.md
+      - 한국어 빠른 시작: ko/quickstart.md
+      - Configuration: reference/configuration.md
+  - Concepts:
+      - Design lineage: concepts/design-lineage.md
+      - Canonical sample: canonical-sample.md
+      - Canonical asset contract: assets/pocket-kingdom/README.md
+      - Heritage seed asset contract: assets/heritage-seed-study/README.md
+  - Python SDK:
+      - Complete workflow: sdk/workflow.md
+      - Prepare: sdk/prepare.md
+      - Explore, pick, and vary: sdk/explore-refine.md
+      - Export and replay: sdk/export-replay.md
+  - Studio:
+      - Simple and Advanced: studio/simple-advanced.md
+      - Models and cache: studio/models-cache.md
+  - Guides:
+      - Seeds and output counts: guides/seeds.md
+      - Migrate from 0.0.x: guides/migration.md
+      - Privacy and assets: guides/privacy.md
+      - Troubleshooting: guides/troubleshooting.md
+  - Release:
+      - Changelog: changelog.md
+      - 0.2.0 release notes: releases/0.2.0.md
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang:
+        - en
+        - ko
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/sample-gallery.js
+
+strict: true

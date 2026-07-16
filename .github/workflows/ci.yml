@@ -4,42 +4,128 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  core:
+    name: Core / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        python-version: ["3.10", "3.12", "3.14"]
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install core development dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Run core, CLI, config, and documentation policy tests
+        run: python -m pytest tests/core tests/docs tests/test_cli.py tests/test_config.py
 
-      - name: Install lightweight test toolchain
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "Pillow>=9.5,<13" "build>=1.2,<2" "pytest>=8,<9" "ruff>=0.12,<1" "twine>=6,<7"
-          python -m pip install --no-deps -e .
+  quality:
+    name: Static quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install development dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Run Ruff
+        run: python -m ruff check src examples tests
+      - name: Run strict type checking
+        run: python -m mypy src/aisketcher
 
-      - name: Lint
-        run: ruff check .
+  studio:
+    name: Studio / Gradio 6
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Studio test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
+      - name: Run Studio tests
+        run: python -m pytest tests/app
 
-      - name: Test
-        run: pytest
+  docs:
+    name: Documentation / strict
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install documentation dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[docs,dev]"
+      - name: Validate documentation contracts
+        run: python -m pytest tests/docs
+      - name: Build documentation with warnings as errors
+        run: mkdocs build --strict --site-dir site
 
-      - name: Build distribution
+  package:
+    name: Distribution / policy scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Build wheel and source archive
         run: python -m build
-
-      - name: Validate distribution metadata
-        run: twine check dist/*
+      - name: Check package metadata
+        run: python -m twine check dist/*
+      - name: Scan source and distributable contents
+        run: python tests/docs/scan_distribution.py --repository . dist/*
+      - name: Smoke-test the installed Studio wheel
+        run: |
+          wheel_path="$(python -c 'import glob, os; print(os.path.abspath(glob.glob("dist/*.whl")[0]))')"
+          python -m venv /tmp/aisketcher-wheel-smoke
+          /tmp/aisketcher-wheel-smoke/bin/python -m pip install --upgrade pip
+          /tmp/aisketcher-wheel-smoke/bin/python -m pip install "${wheel_path}[demo]"
+          /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
+          /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
+      - name: Upload reviewed artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

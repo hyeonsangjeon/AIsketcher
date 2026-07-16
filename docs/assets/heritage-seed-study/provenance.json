@@ -1,0 +1,101 @@
+{
+  "schema": "aisketcher.heritage-seed-comparison/v1",
+  "status": "complete",
+  "created_on": "2026-07-16",
+  "source": {
+    "path": "source.png",
+    "sha256": "50f1b2f9bc88c20e45cc38fc8af5e261fab8061fa456c7f9a654e7b8c2017864",
+    "legacy_jpeg_copied": false,
+    "reason": "The legacy JPEG contains camera and GPS EXIF; this bundle uses the reviewed metadata-free source."
+  },
+  "legacy_record": {
+    "repository_url": "https://github.com/hyeonsangjeon/aws-korea-2023-coding-school",
+    "repository_snapshot_url": "https://github.com/hyeonsangjeon/aws-korea-2023-coding-school/tree/4b3a22098f239dda18134eb5128094aa9892ed5e",
+    "notebook_path": "aws-korea-coding-school-2023.ipynb",
+    "notebook_url": "https://github.com/hyeonsangjeon/aws-korea-2023-coding-school/blob/4b3a22098f239dda18134eb5128094aa9892ed5e/aws-korea-coding-school-2023.ipynb",
+    "notebook_sha256": "7b70430607850ea0f88ebac8bcf5674a5857b6ed70f27b5de9efd20310ed225a",
+    "repository_commit": "4b3a22098f239dda18134eb5128094aa9892ed5e",
+    "notebook_cell_index_zero_based": 7,
+    "notebook_cell_execution_count": 9,
+    "notebook_cell_source_sha256": "91dd47656914cd220be042a83736c9eb582f36f1f2884eee621891b1af47f188",
+    "file_name": "present_image1.jpeg",
+    "legacy_input_reference": {
+      "path": "present_image1.jpeg",
+      "git_blob_sha1": "308d444be45df3c860e17d617e2c7b4aaaa6b4b7",
+      "sha256": "93c63301bc2b720fe1a265e834c83c64fb41909ea14589f757b25042f8986d6c",
+      "dimensions": [
+        800,
+        600
+      ],
+      "copied_into_v2_bundle": false,
+      "exif_present": true,
+      "gps_exif_present": true
+    },
+    "active_seed": 6764547109648557242,
+    "alternative_seeds": [
+      6854547109648557242,
+      6634547109688557242
+    ],
+    "documented_brief_ko": "알파벳 A, 글자, 추상화, 멋진 펜아트",
+    "documented_brief_location": {
+      "cell_index_zero_based": 0,
+      "kind": "markdown"
+    },
+    "recorded_runtime_prompt_ko": "특이한 풍경, 환상적인 그림, 복잡한 나라, 귀여운 케릭터",
+    "recorded_runtime_prompt_location": {
+      "cell_index_zero_based": 7,
+      "output_index_zero_based": 0,
+      "kind": "stream"
+    },
+    "num_inference_steps": 40,
+    "guidance_scale": 7,
+    "canny_low_threshold": 140,
+    "canny_high_threshold": 160,
+    "model_stack": {
+      "base_repo_id": "Lykon/DreamShaper",
+      "base_revision": null,
+      "controlnet_repo_id": "lllyasviel/sd-controlnet-canny",
+      "controlnet_revision": null,
+      "scheduler": "PNDM"
+    },
+    "external_showcase": {
+      "path": "present_result_sample.jpeg",
+      "git_blob_sha1": "515d29afe6970a3c7e9cd4c316b10618ad4e3695",
+      "sha256": "3b07c2753ed89c0e655b675240ffb2d704a7fa448cbe592d05611e65a7ad6be1",
+      "dimensions": [
+        800,
+        600
+      ],
+      "linked_from_opening_cell": true,
+      "active_seed_attribution_verified": false,
+      "matches_embedded_execution_output": false
+    },
+    "embedded_execution_output": {
+      "path": "legacy-2023-cell-output.png",
+      "sha256": "7655cd60349050f724836dcd6e61246298f7b6b9a7c0806c66f93e7d9e62bf4e",
+      "dimensions": [
+        1600,
+        600
+      ],
+      "output_index_zero_based": 2,
+      "verified": true
+    },
+    "model_revisions_pinned": false
+  },
+  "comparison": {
+    "seeds": [
+      6764547109648557242,
+      6854547109648557242,
+      6634547109688557242
+    ],
+    "manifest_path": "manifest.json",
+    "manifest_sha256": "efe7c949c930892dbb3ec860cc3aa05f76b254be7fe4830b42f59c74a3b99750",
+    "selected_candidate": "candidate-2c152546c258",
+    "selected_seed": 6764547109648557242,
+    "technical_badge_leader": "candidate-51a2dec3b190",
+    "offline": true,
+    "downloaded_bytes": 0,
+    "mps_retries": 0
+  },
+  "artwork_license": "../../../ARTWORK_LICENSE.md"
+}

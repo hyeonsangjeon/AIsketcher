@@ -1,0 +1,47 @@
+name: Publish documentation to Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy reviewed documentation
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install documentation dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[docs,dev]"
+      - name: Run documentation policy tests
+        run: python -m pytest tests/docs
+      - name: Build documentation with warnings as errors
+        run: mkdocs build --strict --site-dir site
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v5

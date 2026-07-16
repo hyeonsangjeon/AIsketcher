@@ -1,219 +1,190 @@
 # AIsketcher
 
-[![CI](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml/badge.svg)](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/AIsketcher?style=flat-square)](https://pypi.org/project/AIsketcher/)
-[![Python](https://img.shields.io/pypi/pyversions/AIsketcher?style=flat-square)](https://pypi.org/project/AIsketcher/)
-[![Downloads](https://static.pepy.tech/badge/AIsketcher)](https://pepy.tech/project/AIsketcher)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2f855a?style=flat-square)](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE)
+**Turn one sketch into a traceable family of design directions.**
 
-Turn an image's structure and a natural-language prompt into a new image with
-Stable Diffusion, ControlNet Canny conditioning, and optional Amazon Translate.
+AIsketcher is a model-agnostic Python SDK for structure-guided visual
+exploration. It prepares a sketch, explores several seeded candidates, records
+the direction you pick, creates controlled variations, and exports a replayable
+manifest. It is designed for product designers, graphic designers, and
+sketchers who need more than a one-off image.
 
-AIsketcher handles the repetitive parts around the model call: EXIF orientation,
-aspect-ratio-preserving resize, Canny edge extraction, deterministic seeds, prompt
-translation, and resizing the generated result back to the source dimensions.
+> This repository documents AIsketcher 0.2.0. A source checkout is not proof of
+> PyPI publication; verify the version on PyPI or install a reviewed wheel or
+> pinned revision.
 
-## Results
+<p align="center">
+  <a href="https://hyeonsangjeon.github.io/AIsketcher/canonical-sample/">
+    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-social-preview-github.jpg" width="1200" alt="Pocket Kingdom paper-art hero concept for AIsketcher">
+  </a>
+</p>
+<p align="center"><sub>Pocket Kingdom hero concept · marketing artwork, not an SDK execution claim · select to inspect the real local source, scout, variations, and replay evidence</sub></p>
 
-![AIsketcher temple generation example](https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/pic/yahunjeon.png)
-
-![AIsketcher architectural generation example](https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/pic/seowonjeon.png)
+[Documentation](https://hyeonsangjeon.github.io/AIsketcher/) ·
+[한국어 빠른 시작](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/ko/quickstart.md) ·
+[Migration from 0.0.x](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/guides/migration.md)
 
 ## Why AIsketcher
 
-- **Structure-aware generation**: preserves the composition of the source image with
-  ControlNet Canny edges.
-- **Multilingual prompts**: translates prompts through Amazon Translate before inference.
-- **Reproducible output**: uses an explicit seed and configurable inference settings.
-- **Image-safe preprocessing**: normalizes EXIF orientation, RGB mode, aspect ratio, and
-  ControlNet-compatible dimensions.
-- **Pipeline-agnostic helper**: accepts an already configured Diffusers ControlNet pipeline,
-  so model loading and device placement stay under your control.
+- **Prepare with evidence:** normalize orientation and size, generate a control
+  image, and inspect actionable structure diagnostics before spending GPU time.
+- **Explore deliberately:** create 1, 4, or 8 candidates with an explicit seed
+  plan instead of repeatedly changing an undocumented seed.
+- **Pick and vary:** preserve the selected parent and make subtle, balanced, or
+  bold variations while keeping chosen constraints locked.
+- **Replay the handoff:** export inputs, controls, recipes, seeds, lineage,
+  hashes, and runtime information as a portable study.
+- **Bring your backend:** use the Diffusers adapter or implement the small
+  backend protocol for another local or hosted image model.
 
-## Installation
+## Install
+
+The lightweight SDK does not install Torch, Diffusers, model weights, or the
+web app.
 
 ```bash
-python -m pip install AIsketcher
+python -m pip install "AIsketcher>=0.2,<0.3"
 ```
 
-To try the current development version:
+For development from this repository:
 
 ```bash
-python -m pip install "AIsketcher @ git+https://github.com/hyeonsangjeon/AIsketcher.git"
+python -m pip install -e ".[dev]"
 ```
 
-Python 3.9 or newer is required. A CUDA-capable GPU is strongly recommended for generation;
-CPU inference works but is substantially slower.
+Install optional local generation or the Studio separately:
 
-## Quick Start
+```bash
+python -m pip install "AIsketcher[demo]>=0.2,<0.3"        # Guided Sample Studio
+python -m pip install "AIsketcher[local,demo]>=0.2,<0.3"  # Local generation + Studio
+```
 
-The following example loads the original DreamShaper and Canny ControlNet models used by
-this project, generates one image, and saves the source, control map, and result.
+The complete model-free first run is one line:
+
+```bash
+python -m pip install "AIsketcher[demo]>=0.2,<0.3" && aisketcher init && aisketcher studio
+```
+
+Model downloads happen only after you explicitly choose a local preset. Guided
+Sample mode does not require a model or network connection: this repository
+includes a reviewed four-direction fixture with matching hashes and a real
+`aisketcher.manifest/v1` manifest.
+
+## Python workflow
 
 ```python
-import torch
-from diffusers import (
-    ControlNetModel,
-    StableDiffusionControlNetPipeline,
-    UniPCMultistepScheduler,
+from aisketcher import Intent, PresetManager, SeedPlan, Studio
+
+preset = "sdxl-canny-lite@1"
+models = PresetManager()
+plan = models.plan_install(preset)
+print(plan.license_notice, plan.estimated_bytes, plan.items)
+
+# Run this only after reviewing the repositories, revisions, size, and licenses.
+if not plan.installed:
+    models.install(preset, confirm=True)
+
+studio = Studio.from_preset(preset, device="auto", preset_manager=models)
+prepared = studio.prepare("sketch.jpg")
+
+study = studio.explore(
+    prepared,
+    intent=Intent(
+        prompt="A playful paper-cut fantasy kingdom",
+        profile="graphic_design",
+        structure="balanced",
+    ),
+    outputs=4,
+    seed_plan=SeedPlan.scout(4),
 )
 
-import AIsketcher
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-dtype = torch.float16 if device == "cuda" else torch.float32
-
-controlnet = ControlNetModel.from_pretrained(
-    "lllyasviel/sd-controlnet-canny",
-    torch_dtype=dtype,
-)
-pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    "Lykon/DreamShaper",
-    controlnet=controlnet,
-    torch_dtype=dtype,
-)
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-pipe = pipe.to(device)
-
-original, edges, generated = AIsketcher.img2img(
-    "input.jpg",
-    "a quiet seaside library, warm morning light, detailed pencil texture",
-    num_steps=30,
-    guidance_scale=8.0,
-    seed=42,
-    low=100,
-    high=200,
-    pipe=pipe,
+choice = study.pick(1)
+variants = studio.vary(
+    choice,
+    outputs=4,
+    strength="subtle",
+    locks=("structure",),
 )
 
-original.save("original.png")
-edges.save("control-edges.png")
-generated.save("generated.png")
-```
-
-The first model download is several gigabytes. Hugging Face caches downloaded weights, so
-later runs reuse the local copy.
-
-## Translate Prompts
-
-AIsketcher can translate a prompt before passing it to the diffusion pipeline. Prefer the
-standard AWS credential provider chain: environment variables, `~/.aws/credentials`, IAM
-roles, or workload identity. Do not commit access keys to source code.
-
-```python
-translation = {
-    "region_name": "ap-northeast-2",
-    "SourceLanguageCode": "ko",
-    "TargetLanguageCode": "en",
-}
-
-original, edges, generated = AIsketcher.img2img(
-    "input.jpg",
-    "비 오는 날의 조용한 한옥 도서관, 연필 스케치",
-    pipe=pipe,
-    trans_info=translation,
-    seed=42,
+variants.export("pocket-kingdom-run")
+report = studio.replay(
+    "pocket-kingdom-run/manifest.json",
+    mode="strict",
 )
 ```
 
-Set `SourceLanguageCode` to `auto` or omit it to let Amazon Translate detect the source
-language. Explicit `aws_access_key_id`, `aws_secret_access_key`, and `aws_session_token`
-values are supported for backward compatibility, but the provider chain is safer for
-production use.
+For a network- and model-free workflow test, use
+`Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. Its images are deterministic
+fixtures for code and CI, not model-generated creative results.
 
-Amazon Translate requires an AWS account and may incur usage charges.
+The exported manifest contains the resolved recipe and actual seeds. It never
+contains access tokens, absolute local paths, original upload names, or EXIF
+metadata. See the
+[complete SDK workflow](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/sdk/workflow.md)
+and [privacy model](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/guides/privacy.md).
 
-## API
+## Studio
 
-### `img2img(...)`
+The included Gradio app has two views backed by the same recipe and selection:
 
-```python
-AIsketcher.img2img(
-    img_path,
-    prompt,
-    num_steps=20,
-    guidance_scale=7,
-    seed=0,
-    low=100,
-    high=200,
-    pipe=None,
-    trans_info=None,
-    *,
-    image_size=800,
-    default_prompt=AIsketcher.DEFAULT_PROMPT,
-    negative_prompt=AIsketcher.DEFAULT_NEGATIVE_PROMPT,
-)
+- **Simple** asks for a sketch, a one-sentence brief, a work type, and a
+  Loose/Balanced/Faithful structure choice.
+- **Advanced** exposes model, Canny, generation, seed, variation, export, and
+  replay controls without discarding the Simple session.
+
+Once the optional demo is installed, launch it with:
+
+```bash
+aisketcher init
+aisketcher studio
 ```
 
-| Parameter | Purpose |
-| --- | --- |
-| `img_path` | Local path, HTTP(S) URL, or `PIL.Image.Image` source. |
-| `prompt` | Prompt sent to the pipeline, optionally after translation. |
-| `num_steps` | Number of diffusion inference steps. |
-| `guidance_scale` | Strength of prompt guidance. |
-| `seed` | Integer seed used for reproducible generation. |
-| `low`, `high` | Canny edge thresholds satisfying `0 <= low < high <= 255`. |
-| `pipe` | Loaded, callable Diffusers ControlNet pipeline. |
-| `trans_info` | Optional Amazon Translate settings. |
-| `image_size` | Longest side used for the ControlNet input. |
-| `default_prompt` | Quality prefix prepended to the user's prompt. |
-| `negative_prompt` | Negative prompt supplied to the diffusion pipeline. |
+Start with Guided Sample when no model is installed. It opens the bundled,
+verified Pocket Kingdom study in read-only mode. See the
+[Studio guide](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/studio/simple-advanced.md)
+for its current availability and local-only defaults. The versioned YAML,
+resolution order, cache settings, and project overrides are documented in the
+[configuration reference](https://github.com/hyeonsangjeon/AIsketcher/blob/main/docs/reference/configuration.md).
 
-Returns `(original_image, canny_image, generated_image)` as Pillow images. The generated
-image is resized to the original image dimensions.
+Repository contributors can still use `python -m examples.studio_app.app` as a
+thin compatibility launcher; installed users do not need a source checkout.
 
-### Image utilities
+## Canonical example
 
-```python
-resized = AIsketcher.resize_image("input.jpg", 800)
-oriented = AIsketcher.correct_image_orientation(resized)
-```
+Pocket Kingdom is the canonical `source → control → scout four → pick → vary
+four → final → export` example. Its anonymized source, exact prepared input,
+Canny control, four real local SDXL directions, four structure-locked
+variations, human selections, seeds, lineage, technical scores, and hashes are
+checked in with replayable manifests. The manual presents the final result
+alongside every alternative instead of substituting private reference art.
 
-### Translation utility
+Artwork is **not** licensed under MIT. Read the
+[artwork notice](https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md)
+before using any image from this repository.
 
-```python
-english = AIsketcher.translate_language(
-    "안녕하세요",
-    {"SourceLanguageCode": "ko", "TargetLanguageCode": "en"},
-)
-```
+## Compatibility
 
-## Model and Safety Notes
-
-- The MIT license in this repository applies to AIsketcher code. DreamShaper, ControlNet,
-  Stable Diffusion, and generated outputs may have separate licenses and usage terms.
-- Keep the Diffusers safety checker enabled unless you have an appropriate replacement.
-- A negative prompt reduces some unwanted output but is not a safety guarantee.
-- Generated images can reflect limitations and biases in the selected model.
-
-Review the model cards before production use:
-
-- [Lykon/DreamShaper](https://huggingface.co/Lykon/DreamShaper)
-- [lllyasviel/sd-controlnet-canny](https://huggingface.co/lllyasviel/sd-controlnet-canny)
+The historical `AIsketcher.img2img` facade remains temporarily available in the
+0.2 line and emits a deprecation warning. Cloud translation and credential
+arguments from the earliest releases have been removed. Migrate to lowercase
+`aisketcher` imports and the study workflow before 0.3.0.
 
 ## Development
 
-The test suite does not download model weights, require a GPU, or call AWS.
-
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "Pillow>=9.5,<13" "pytest>=8,<9" "ruff>=0.12,<1" "build>=1.2,<2" "twine>=6,<7"
-python -m pip install --no-deps -e .
-
-ruff check .
-pytest
+python -m pip install -e ".[dev,docs]"
+python -m pytest tests/core tests/docs
+python -m pytest tests/app tests/test_config.py tests/test_cli.py
+mkdocs build --strict
 python -m build
-twine check dist/*
+python -m twine check dist/*
 ```
 
-## References
-
-- [Hugging Face Diffusers ControlNet guide](https://huggingface.co/docs/diffusers/using-diffusers/controlnet)
-- [Stable Diffusion ControlNet pipeline API](https://huggingface.co/docs/diffusers/api/pipelines/controlnet)
-- [Amazon Translate `translate_text`](https://docs.aws.amazon.com/translate/latest/dg/API_TranslateText.html)
+Network and GPU tests are opt-in. Normal CI uses a deterministic fake backend
+and never downloads model weights.
 
 ## License
 
-[MIT](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE)
+Source code and documentation text are licensed under the
+[MIT License](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE).
+Images, drawings, generated derivatives, and other artwork are excluded; see
+the [artwork notice](https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md).

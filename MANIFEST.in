@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include ARTWORK_LICENSE.md
+recursive-include src *.py py.typed *.css *.json *.md *.png
+
+prune docs
+prune examples
+prune test
+prune tests
+
+global-exclude .DS_Store
+global-exclude *.py[cod]
+global-exclude __pycache__

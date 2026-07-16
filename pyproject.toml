@@ -4,68 +4,127 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AIsketcher"
-version = "0.1.0"
-description = "ControlNet-guided image generation with optional Amazon Translate prompts"
+version = "0.2.0"
+description = "Structured visual exploration and reproducible sketch-to-image design lineage"
 readme = "README.md"
-requires-python = ">=3.9"
-license = "MIT"
-license-files = ["LICENSE"]
+requires-python = ">=3.10"
+license = "MIT AND LicenseRef-AIsketcher-Artwork"
+license-files = ["LICENSE", "ARTWORK_LICENSE.md"]
 authors = [
-  { name = "Hyeonsang Jeon", email = "wingnut0310@gmail.com" },
+  { name = "hyeonsangjeon" },
 ]
 keywords = [
   "controlnet",
+  "design-exploration",
   "diffusers",
-  "image-generation",
-  "stable-diffusion",
-  "text-to-image",
+  "generative-ai",
+  "sketch-to-image",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "Intended Audience :: Science/Research",
+  "Intended Audience :: End Users/Desktop",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Artistic Software",
   "Topic :: Multimedia :: Graphics",
-  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-  "accelerate>=0.21,<2",
-  "boto3>=1.28,<2",
-  "diffusers>=0.21,<1",
-  "numpy>=1.23,<3",
-  "opencv-python-headless>=4.7,<5",
-  "Pillow>=9.5,<13",
-  "torch>=2.0,<3",
-  "transformers>=4.30,<5",
+  "numpy>=2.0,<3",
+  "opencv-python-headless>=4.10,<6",
+  "pillow>=11,<13",
+  "platformdirs>=4,<5",
 ]
 
+[project.scripts]
+aisketcher = "aisketcher.cli:main"
+
 [project.optional-dependencies]
-test = [
-  "build>=1.2,<2",
-  "pytest>=8,<9",
-  "ruff>=0.12,<1",
-  "twine>=6,<7",
+local = [
+  "accelerate>=1.14,<2",
+  "diffusers>=0.39,<0.40",
+  "huggingface-hub>=1.23,<2",
+  "safetensors>=0.8,<1",
+  "torch>=2.13,<2.14",
+  "transformers>=5.14,<6",
+]
+demo = [
+  "gradio>=6.20,<7",
+]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.7,<10",
+]
+dev = [
+  "build>=1.3,<2",
+  "mypy>=1.18,<2",
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+  "ruff>=0.14,<1",
+  "twine>=6.2,<7",
 ]
 
 [project.urls]
 Homepage = "https://github.com/hyeonsangjeon/AIsketcher"
+Documentation = "https://hyeonsangjeon.github.io/AIsketcher/"
 Issues = "https://github.com/hyeonsangjeon/AIsketcher/issues"
 Source = "https://github.com/hyeonsangjeon/AIsketcher"
 
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["AIsketcher"]
+
 [tool.setuptools.packages.find]
-include = ["AIsketcher*"]
+where = ["src"]
+include = ["aisketcher*"]
+
+[tool.setuptools.package-data]
+aisketcher = [
+  "py.typed",
+  "studio_app/styles.css",
+  "studio_app/assets/pocket-kingdom/ARTWORK_NOTICE.md",
+  "studio_app/assets/pocket-kingdom/manifest.json",
+  "studio_app/assets/pocket-kingdom/prepared/*.png",
+  "studio_app/assets/pocket-kingdom/scout/*.png",
+]
 
 [tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = [
+  "model: requires local diffusion model weights",
+  "mps: requires Apple Silicon MPS",
+  "cuda: requires an NVIDIA CUDA device",
+]
 
 [tool.ruff]
+target-version = "py310"
 line-length = 100
-target-version = "py39"
+src = ["src", "examples", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["aisketcher"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["gradio", "huggingface_hub"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["aisketcher"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
