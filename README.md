@@ -1,156 +1,219 @@
-[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](https://raw.githubusercontent.com/hyeonsangjeon/youtube-dl-nas/master/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/AIsketcher)](https://pepy.tech/project/AIsketcher)
-[![PyPI version](https://badge.fury.io/py/AIsketcher.svg)](https://pypi.org/project/AIsketcher/)
-
 # AIsketcher
 
-- Stable Diffusion model : Lykon/DreamShaper[1] 
-- Text-to-Image Generation with ControlNet Conditioning : used Canny edge detection [2][3]
-- prompt translator english to korean : Amazon Translate [4]
+[![CI](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml/badge.svg)](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/AIsketcher?style=flat-square)](https://pypi.org/project/AIsketcher/)
+[![Python](https://img.shields.io/pypi/pyversions/AIsketcher?style=flat-square)](https://pypi.org/project/AIsketcher/)
+[![Downloads](https://static.pepy.tech/badge/AIsketcher)](https://pepy.tech/project/AIsketcher)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f855a?style=flat-square)](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE)
 
-Text-to-image generation using Huggingface stable diffusion ControlNet conditioning and AWS Translate's prompt translation function
+Turn an image's structure and a natural-language prompt into a new image with
+Stable Diffusion, ControlNet Canny conditioning, and optional Amazon Translate.
 
-![screenshot1](https://github.com/hyeonsangjeon/AIsketcher/blob/main/pic/yahunjeon.png?raw=true)
-![screenshot2](https://github.com/hyeonsangjeon/AIsketcher/blob/main/pic/seowonjeon.png?raw=true)
+AIsketcher handles the repetitive parts around the model call: EXIF orientation,
+aspect-ratio-preserving resize, Canny edge extraction, deterministic seeds, prompt
+translation, and resizing the generated result back to the source dimensions.
 
-## Project Description
-This function takes two inputs: an image and a prompt text, utilizing the power of multi-modal models.
-In this project, I used Stable Diffusion, where prompts were written in English. However, for users who predominantly use other languages, it can be challenging to express the details of their input sentences. Therefore, we utilize user's language for the input prompt, and the corresponding text is machine-translated to English using Amazon Translate before being fed into the model.
+## Results
 
-Prerequisite: Load the ControlNetModel and StableDiffusionModel into the StableDiffusionControlNet Pipeline and prepare the PNDMScheduler.
-```python
-controlnet_model = "lllyasviel/sd-controlnet-canny"
-sd_model = "Lykon/DreamShaper"
+![AIsketcher temple generation example](https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/pic/yahunjeon.png)
 
-controlnet = ControlNetModel.from_pretrained(
-    controlnet_model,
-    torch_dtype=torch.float16
-)
+![AIsketcher architectural generation example](https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/pic/seowonjeon.png)
 
-pipe = StableDiffusionControlNetPipeline.from_pretrained(
-    sd_model,
-    controlnet=controlnet,
-    torch_dtype=torch.float16
-)
+## Why AIsketcher
 
-pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
-pipe.enable_model_cpu_offload()
-```
+- **Structure-aware generation**: preserves the composition of the source image with
+  ControlNet Canny edges.
+- **Multilingual prompts**: translates prompts through Amazon Translate before inference.
+- **Reproducible output**: uses an explicit seed and configurable inference settings.
+- **Image-safe preprocessing**: normalizes EXIF orientation, RGB mode, aspect ratio, and
+  ControlNet-compatible dimensions.
+- **Pipeline-agnostic helper**: accepts an already configured Diffusers ControlNet pipeline,
+  so model loading and device placement stay under your control.
 
-## Function Workflow
-
-1. Resize the input image to 800x800.
-2. Extract the edges, which are the key features of the input image, using the Canny function.
-3. If the input sentence contains the Amazon Translate dictionary (trans_info) variable, translate the sentence to English.
-4. Feed the translated prompt and the extracted edge image into the StableDiffusionControlNet Pipeline to generate a new image.
-5. Resize the output image back to the original size of the input image and display it.
-
-This workflow allows for the generation of new images based on input images and prompts, with the option of translating the prompts to English for non-English input sentences.
-
-### Usage
+## Installation
 
 ```bash
-pip install AIsketcher
+python -m pip install AIsketcher
 ```
 
+To try the current development version:
 
-#### case1. English Prompt 
+```bash
+python -m pip install "AIsketcher @ git+https://github.com/hyeonsangjeon/AIsketcher.git"
+```
+
+Python 3.9 or newer is required. A CUDA-capable GPU is strongly recommended for generation;
+CPU inference works but is substantially slower.
+
+## Quick Start
+
+The following example loads the original DreamShaper and Canny ControlNet models used by
+this project, generates one image, and saves the source, control map, and result.
 
 ```python
+import torch
+from diffusers import (
+    ControlNetModel,
+    StableDiffusionControlNetPipeline,
+    UniPCMultistepScheduler,
+)
+
 import AIsketcher
-from PIL import Image
-import numpy as np
-file_name = 'hello.jpg'
 
-input_text = 'Cute, (hungry), plump, sitting at a table by the beach, warm feeling, beautiful shining eyes, seascape'
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.float16 if device == "cuda" else torch.float32
 
-num_steps = 50
-guidance_scale = 17
-seed =6764547109648557242 
-low = 140
-high = 160
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny",
+    torch_dtype=dtype,
+)
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+    "Lykon/DreamShaper",
+    controlnet=controlnet,
+    torch_dtype=dtype,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to(device)
 
-image, canny_image, out_image = AIsketcher.img2img(file_name,  input_text,  num_steps, guidance_scale, seed, low, high, pipe)
-Image.fromarray(np.concatenate([image.resize(out_image.size), out_image], axis=1))
+original, edges, generated = AIsketcher.img2img(
+    "input.jpg",
+    "a quiet seaside library, warm morning light, detailed pencil texture",
+    num_steps=30,
+    guidance_scale=8.0,
+    seed=42,
+    low=100,
+    high=200,
+    pipe=pipe,
+)
+
+original.save("original.png")
+edges.save("control-edges.png")
+generated.save("generated.png")
 ```
 
-#### case2. Korean Prompt without IAM AccessRole
+The first model download is several gigabytes. Hugging Face caches downloaded weights, so
+later runs reuse the local copy.
+
+## Translate Prompts
+
+AIsketcher can translate a prompt before passing it to the diffusion pipeline. Prefer the
+standard AWS credential provider chain: environment variables, `~/.aws/credentials`, IAM
+roles, or workload identity. Do not commit access keys to source code.
 
 ```python
-import AIsketcher
-from PIL import Image
-import numpy as np
-file_name = 'hello.jpg'
-input_text = '귀여운, (배가고픈), 포동포동한, 해변가 식탁에 앉은, 따뜻한 느낌, 아름답고 빛나는 눈, 바다풍경'
+translation = {
+    "region_name": "ap-northeast-2",
+    "SourceLanguageCode": "ko",
+    "TargetLanguageCode": "en",
+}
 
-trans_info = {
-            'region_name' : 'us-east-1', #user region
-            'aws_access_key_id' : '{{YOUR_ACCESS_KEY}}',
-            'aws_secret_access_key' : '{{YOUR_SECRET_KEY}}',
-            'SourceLanguageCode' : 'ko',
-            'TargetLanguageCode' : 'en',
-            'iam_access' : False
-        }
-
-num_steps = 50
-guidance_scale = 17
-seed =6764547109648557242 
-low = 140
-high = 160
-
-image, canny_image, out_image = AIsketcher.img2img(file_name,  input_text,  num_steps, guidance_scale, seed, low, high, pipe, trans_info)
+original, edges, generated = AIsketcher.img2img(
+    "input.jpg",
+    "비 오는 날의 조용한 한옥 도서관, 연필 스케치",
+    pipe=pipe,
+    trans_info=translation,
+    seed=42,
+)
 ```
 
-#### case3. Korean Prompt with IAM AccessRole between SageMaker and Translate
+Set `SourceLanguageCode` to `auto` or omit it to let Amazon Translate detect the source
+language. Explicit `aws_access_key_id`, `aws_secret_access_key`, and `aws_session_token`
+values are supported for backward compatibility, but the provider chain is safer for
+production use.
+
+Amazon Translate requires an AWS account and may incur usage charges.
+
+## API
+
+### `img2img(...)`
+
 ```python
-import AIsketcher
-from PIL import Image
-import numpy as np
-file_name = 'hello.jpg'
-input_text = '귀여운, (배가고픈), 포동포동한, 해변가 식탁에 앉은, 따뜻한 느낌, 아름답고 빛나는 눈, 바다풍경'
-
-trans_info = {
-            'region_name' : 'us-east-1', #user region
-            'SourceLanguageCode' : 'ko',
-            'TargetLanguageCode' : 'en',
-            'iam_access' : True
-        }
-
-num_steps = 50
-guidance_scale = 17
-seed =6764547109648557242 
-low = 140
-high = 160
-
-image, canny_image, out_image = AIsketcher.img2img(file_name,  input_text,  num_steps, guidance_scale, seed, low, high, pipe, trans_info)
+AIsketcher.img2img(
+    img_path,
+    prompt,
+    num_steps=20,
+    guidance_scale=7,
+    seed=0,
+    low=100,
+    high=200,
+    pipe=None,
+    trans_info=None,
+    *,
+    image_size=800,
+    default_prompt=AIsketcher.DEFAULT_PROMPT,
+    negative_prompt=AIsketcher.DEFAULT_NEGATIVE_PROMPT,
+)
 ```
 
+| Parameter | Purpose |
+| --- | --- |
+| `img_path` | Local path, HTTP(S) URL, or `PIL.Image.Image` source. |
+| `prompt` | Prompt sent to the pipeline, optionally after translation. |
+| `num_steps` | Number of diffusion inference steps. |
+| `guidance_scale` | Strength of prompt guidance. |
+| `seed` | Integer seed used for reproducible generation. |
+| `low`, `high` | Canny edge thresholds satisfying `0 <= low < high <= 255`. |
+| `pipe` | Loaded, callable Diffusers ControlNet pipeline. |
+| `trans_info` | Optional Amazon Translate settings. |
+| `image_size` | Longest side used for the ControlNet input. |
+| `default_prompt` | Quality prefix prepended to the user's prompt. |
+| `negative_prompt` | Negative prompt supplied to the diffusion pipeline. |
 
-### Default Parameters Used
-default_prompt
-```text
-(8k, best quality, masterpiece:1.2), (realistic, photo-realistic:1.37), ultra-detailed,
+Returns `(original_image, canny_image, generated_image)` as Pillow images. The generated
+image is resized to the original image dimensions.
+
+### Image utilities
+
+```python
+resized = AIsketcher.resize_image("input.jpg", 800)
+oriented = AIsketcher.correct_image_orientation(resized)
 ```
-negative_prompt
-```text
-NSFW, lowres, ((bad anatomy)), ((bad hands)), text, missing finger, extra digits, fewer digits, blurry, ((mutated hands and fingers)), (poorly drawn face), ((mutation)), ((deformed face)), (ugly), ((bad proportions)), ((extra limbs)), extra face, (double head), (extra head), ((extra feet)), monster, logo, cropped, worst quality, low quality, normal quality, jpeg, humpbacked, long body, long neck, ((jpeg artifacts))
+
+### Translation utility
+
+```python
+english = AIsketcher.translate_language(
+    "안녕하세요",
+    {"SourceLanguageCode": "ko", "TargetLanguageCode": "en"},
+)
 ```
 
-| Variables      | Description                                                                                                     |
-|----------------|-----------------------------------------------------------------------------------------------------------------|
-| num_steps      | Number of steps to run the diffusion process for                                                                |  
-| guidance_scale | Creativity value adjustment, a parameter that controls how much the image generation process follows the text prompt | 
-| seed           | a number used to initialize the generation in the stable diffusion model                                        |
-| low            | Canny Edge Detection lowpass filter threshold                                                                   |
-| high           | Canny Edge Detection highpass filter threshold                                                                  |
-| pipe           | PNDMScheduler                                                                                |
-| trans_info     | Amazon Translate parameters,                                                                                       |
+## Model and Safety Notes
 
+- The MIT license in this repository applies to AIsketcher code. DreamShaper, ControlNet,
+  Stable Diffusion, and generated outputs may have separate licenses and usage terms.
+- Keep the Diffusers safety checker enabled unless you have an appropriate replacement.
+- A negative prompt reduces some unwanted output but is not a safety guarantee.
+- Generated images can reflect limitations and biases in the selected model.
 
+Review the model cards before production use:
 
-### References 
-- `[1]`. Lykon/DreamShaper, Stable Diffusion model, https://huggingface.co/Lykon/DreamShaper
-- `[2]`. Text-to-Image Generation with ControlNet Conditioning, https://huggingface.co/docs/diffusers/v0.14.0/en/api/pipelines/stable_diffusion/controlnet
-- `[3]`. Controlnet - Canny Version ,https://huggingface.co/lllyasviel/sd-controlnet-canny
-- `[4]`. Amazon Translate, https://aws.amazon.com/ko/translate/
-- `[5]`. Amazon Translate, source language code, https://docs.aws.amazon.com/translate/latest/dg/what-is-languages.html
+- [Lykon/DreamShaper](https://huggingface.co/Lykon/DreamShaper)
+- [lllyasviel/sd-controlnet-canny](https://huggingface.co/lllyasviel/sd-controlnet-canny)
+
+## Development
+
+The test suite does not download model weights, require a GPU, or call AWS.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "Pillow>=9.5,<13" "pytest>=8,<9" "ruff>=0.12,<1" "build>=1.2,<2" "twine>=6,<7"
+python -m pip install --no-deps -e .
+
+ruff check .
+pytest
+python -m build
+twine check dist/*
+```
+
+## References
+
+- [Hugging Face Diffusers ControlNet guide](https://huggingface.co/docs/diffusers/using-diffusers/controlnet)
+- [Stable Diffusion ControlNet pipeline API](https://huggingface.co/docs/diffusers/api/pipelines/controlnet)
+- [Amazon Translate `translate_text`](https://docs.aws.amazon.com/translate/latest/dg/API_TranslateText.html)
+
+## License
+
+[MIT](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE)

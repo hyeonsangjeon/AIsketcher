@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "AIsketcher"
+version = "0.1.0"
+description = "ControlNet-guided image generation with optional Amazon Translate prompts"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Hyeonsang Jeon", email = "wingnut0310@gmail.com" },
+]
+keywords = [
+  "controlnet",
+  "diffusers",
+  "image-generation",
+  "stable-diffusion",
+  "text-to-image",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Graphics",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "accelerate>=0.21,<2",
+  "boto3>=1.28,<2",
+  "diffusers>=0.21,<1",
+  "numpy>=1.23,<3",
+  "opencv-python-headless>=4.7,<5",
+  "Pillow>=9.5,<13",
+  "torch>=2.0,<3",
+  "transformers>=4.30,<5",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1.2,<2",
+  "pytest>=8,<9",
+  "ruff>=0.12,<1",
+  "twine>=6,<7",
+]
+
+[project.urls]
+Homepage = "https://github.com/hyeonsangjeon/AIsketcher"
+Issues = "https://github.com/hyeonsangjeon/AIsketcher/issues"
+Source = "https://github.com/hyeonsangjeon/AIsketcher"
+
+[tool.setuptools.packages.find]
+include = ["AIsketcher*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

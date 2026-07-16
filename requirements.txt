@@ -1,4 +1,8 @@
-opencv-contrib-python
-diffusers
-transformers
-boto3
+accelerate>=0.21,<2
+boto3>=1.28,<2
+diffusers>=0.21,<1
+numpy>=1.23,<3
+opencv-python-headless>=4.7,<5
+Pillow>=9.5,<13
+torch>=2.0,<3
+transformers>=4.30,<5

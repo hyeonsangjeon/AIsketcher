@@ -1,23 +1,21 @@
-"""
-"""
-__docformat__ = "restructuredtext"
-# Let users know if they're missing any of our hard dependencies
-hard_dependencies = ("diffusers", "boto3")
-missing_dependencies = []
+"""AIsketcher public API."""
 
-for dependency in hard_dependencies:
-    try:
-        __import__(dependency)
-    except ImportError as e:
-        missing_dependencies.append(f"{dependency}: {e}")
-
-from AIsketcher.modelPipe import (
+from .modelPipe import (
+    DEFAULT_NEGATIVE_PROMPT,
+    DEFAULT_PROMPT,
+    correct_image_orientation,
     img2img,
-    translate_language
+    resize_image,
+    translate_language,
 )
 
-#__all__ = ["get_cer",
-#           "get_wer"]
+__version__ = "0.1.0"
 
-
-
+__all__ = [
+    "DEFAULT_NEGATIVE_PROMPT",
+    "DEFAULT_PROMPT",
+    "correct_image_orientation",
+    "img2img",
+    "resize_image",
+    "translate_language",
+]

@@ -7,11 +7,16 @@ javadocs/*
 logs/
 .idea
 __pycache__/
+*.py[cod]
 *egg-info
 # IntelliJ IDEA
 **/.idea
 *.iml
 venv/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
 as-sketcher
 
 build.sh
