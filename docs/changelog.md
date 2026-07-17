@@ -3,6 +3,27 @@
 This page tracks user-visible package changes. PyPI is the source of truth for
 whether a listed version is publicly available.
 
+## 0.2.1
+
+Version 0.2.1 makes the modern v0.2 package the default public PyPI experience
+and aligns its presentation with the reviewed Studio workflow.
+
+### Changed
+
+- installation examples now use version-pinned PyPI commands for the core,
+  Studio, local-generation, and combined optional dependency profiles;
+- the README carried into PyPI metadata describes the current model-agnostic
+  SDK rather than the historical AWS workflow;
+- the English Studio documentation now leads with an actual local capture of
+  the HPO-selected heritage direction: seed `6764547109648557242` with pinned
+  preset `sdxl-canny-lite@1`;
+- publishing a GitHub Release for a matching `v<version>` tag now starts the
+  guarded PyPI workflow automatically. The job verifies the tag and package
+  version, runs release tests and distribution scans, smoke-tests the wheel,
+  and publishes through OIDC Trusted Publishing without a PyPI API token.
+
+See the detailed [0.2.1 release notes](releases/0.2.1.md).
+
 ## 0.2.0
 
 The v0.2 line rebuilds AIsketcher around a model-independent design study:

@@ -1,15 +1,15 @@
 # Quick start
 
-The reviewed v0.2.0 wheel is attached to the
-[GitHub release](https://github.com/hyeonsangjeon/AIsketcher/releases/tag/v0.2.0).
-Use the exact wheel URLs below until PyPI lists v0.2.0.
+Version 0.2.1 is published on
+[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). The commands below pin the
+public release so a later package update cannot silently change the setup.
 
 ## Install the layer you need
 
 === "Core SDK"
 
     ```bash
-    python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+    python -m pip install "AIsketcher==0.2.1"
     ```
 
     This installs preparation, recipe, lineage, export, and replay types. It
@@ -18,7 +18,7 @@ Use the exact wheel URLs below until PyPI lists v0.2.0.
 === "Local generation"
 
     ```bash
-    python -m pip install "AIsketcher[local] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+    python -m pip install "AIsketcher[local]==0.2.1"
     ```
 
     Local presets download their pinned model files only after confirmation.
@@ -26,7 +26,7 @@ Use the exact wheel URLs below until PyPI lists v0.2.0.
 === "Studio"
 
     ```bash
-    python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+    python -m pip install "AIsketcher[demo]==0.2.1"
     aisketcher init
     aisketcher studio
     ```
@@ -39,7 +39,7 @@ Use the exact wheel URLs below until PyPI lists v0.2.0.
 For the complete model-free first run:
 
 ```bash
-python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 `aisketcher init` protects an existing settings file. Use `--path` for a

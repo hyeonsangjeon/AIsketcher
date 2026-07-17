@@ -13,7 +13,7 @@ from aisketcher.studio_app import AppController, GuidedSampleCatalog, build_app
 
 
 def run() -> None:
-    assert version("AIsketcher") == aisketcher.__version__ == "0.2.0"
+    assert version("AIsketcher") == aisketcher.__version__ == "0.2.1"
     assert callable(AIsketcher.img2img)
     sample = GuidedSampleCatalog().load()
     assert len(sample.candidates) == 4

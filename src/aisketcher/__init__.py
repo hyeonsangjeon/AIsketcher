@@ -60,7 +60,7 @@ from .presets import (
 from .studio import Studio
 from .study import Study
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "AIsketcherError",

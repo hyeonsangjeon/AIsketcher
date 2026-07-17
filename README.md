@@ -1,5 +1,7 @@
 # AIsketcher
 
+[![PyPI version](https://img.shields.io/pypi/v/AIsketcher.svg)](https://pypi.org/project/AIsketcher/)
+
 **Turn one sketch into a traceable family of design directions.**
 
 AIsketcher is a model-agnostic Python SDK for structure-guided visual
@@ -17,6 +19,7 @@ sketchers who need more than a one-off image.
 
 [Documentation](https://hyeonsangjeon.github.io/AIsketcher/) ·
 [한국어 빠른 시작](https://hyeonsangjeon.github.io/AIsketcher/ko/quickstart/) ·
+[PyPI](https://pypi.org/project/AIsketcher/0.2.1/) ·
 [Migration from 0.0.x](https://hyeonsangjeon.github.io/AIsketcher/guides/migration/)
 
 ## Why AIsketcher
@@ -34,13 +37,12 @@ sketchers who need more than a one-off image.
 
 ## Install
 
-The reviewed v0.2.0 wheel is attached to the
-[GitHub release](https://github.com/hyeonsangjeon/AIsketcher/releases/tag/v0.2.0).
-Until PyPI lists v0.2.0, install that exact wheel rather than the legacy PyPI
-release:
+AIsketcher 0.2.1 is published on
+[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). Pin the version for a
+reproducible install:
 
 ```bash
-python -m pip install "AIsketcher @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+python -m pip install "AIsketcher==0.2.1"
 ```
 
 The lightweight SDK does not install Torch, Diffusers, model weights, or the
@@ -56,14 +58,14 @@ python -m pip install -e ".[dev]"
 Install optional local generation or the Studio separately:
 
 ```bash
-python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
-python -m pip install "AIsketcher[local,demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl"
+python -m pip install "AIsketcher[demo]==0.2.1"
+python -m pip install "AIsketcher[local,demo]==0.2.1"
 ```
 
 The complete model-free first run is one line:
 
 ```bash
-python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
+python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 Model downloads happen only after you explicitly choose a local preset. Guided
