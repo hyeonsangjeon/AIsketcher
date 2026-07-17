@@ -1,6 +1,7 @@
 # AIsketcher
 
 [![PyPI version](https://img.shields.io/pypi/v/AIsketcher.svg)](https://pypi.org/project/AIsketcher/)
+[![GitHub tag](https://img.shields.io/github/v/tag/hyeonsangjeon/AIsketcher?sort=semver&label=tag)](https://github.com/hyeonsangjeon/AIsketcher/releases/latest)
 
 **Turn one sketch into a traceable family of design directions.**
 
