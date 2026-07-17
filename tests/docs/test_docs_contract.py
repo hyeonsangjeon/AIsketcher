@@ -29,6 +29,7 @@ REQUIRED_PAGES = {
     "reference/configuration.md",
     "changelog.md",
     "releases/0.2.0.md",
+    "releases/0.2.1.md",
 }
 
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")

@@ -46,9 +46,8 @@ def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     assert workflow.count("persist-credentials: false") == 3
 
 
-@pytest.mark.parametrize("name", ["pages.yml", "publish-pypi.yml"])
-def test_deployment_workflows_are_manual_only(name: str) -> None:
-    workflow = (WORKFLOWS / name).read_text(encoding="utf-8")
+def test_pages_deployment_is_manual_only() -> None:
+    workflow = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
     assert "pull_request:" not in workflow
@@ -56,15 +55,25 @@ def test_deployment_workflows_are_manual_only(name: str) -> None:
 
 def test_pypi_uses_oidc_and_protected_environment() -> None:
     workflow = (WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
+    assert "release:\n    types: [published]" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "github.event_name == 'release'" in workflow
     assert "environment: pypi" in workflow
     assert "id-token: write" in workflow
     assert "pypa/gh-action-pypi-publish@v1.14.0" in workflow
+    assert "actions/upload-artifact@v7" in workflow
+    assert workflow.count("actions/download-artifact@v8") == 2
+    assert "needs: [build, publish]" in workflow
+    assert "gh release upload" in workflow
+    assert "--clobber" not in workflow
+    assert "DISPATCH_CONFIRM" in workflow
     assert "password:" not in workflow
     assert "api-token" not in workflow.lower()
     assert "EXPECTED_VERSION" in workflow
-    assert 'refs/tags/v${EXPECTED_VERSION}' in workflow
+    assert 'refs/tags/v*' in workflow
     assert "persist-credentials: false" in workflow
     assert "wheel_smoke.py" in workflow
+    assert "source archive must contain exactly one PKG-INFO file" in workflow
     assert "python -m pytest" in workflow
     assert "scan_distribution.py --repository . dist/*" in workflow
 
@@ -94,19 +103,37 @@ def test_artwork_is_explicitly_excluded_from_mit() -> None:
 def test_release_version_is_consistent_across_metadata_and_notes() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     package = (ROOT / "src/aisketcher/__init__.py").read_text(encoding="utf-8")
-    notes = (ROOT / "docs/releases/0.2.0.md").read_text(encoding="utf-8")
+    manifest = (ROOT / "src/aisketcher/manifest.py").read_text(encoding="utf-8")
+    lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    notes = (ROOT / "docs/releases/0.2.1.md").read_text(encoding="utf-8")
 
-    assert 'version = "0.2.0"' in pyproject
-    assert '__version__ = "0.2.0"' in package
-    assert notes.startswith("# AIsketcher 0.2.0\n")
+    assert 'version = "0.2.1"' in pyproject
+    assert '__version__ = "0.2.1"' in package
+    assert 'package_version = "0.2.1"' in manifest
+    assert 'name = "aisketcher"\nversion = "0.2.1"' in lockfile
+    assert notes.startswith("# AIsketcher 0.2.1\n")
 
 
 def test_readme_exposes_the_packaged_first_run() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "aisketcher init && aisketcher studio" in readme
-    assert "releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" in readme
-    assert 'AIsketcher[demo] @ https://' in readme
+    assert "\npip install aisketcher\n" in readme
+    assert 'aisketcher[demo]==0.2.1' in readme
+    assert "Until PyPI lists" not in readme
+    assert "releases/download/v0.2.0" not in readme
+
+
+def test_pypi_description_uses_the_current_product_boundary() -> None:
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'readme = "README.md"' in pyproject
+    assert "model-agnostic Python SDK" in readme
+    assert "aisketcher-studio-heritage-fixed-seed-en.jpg" in readme
+    assert "6764547109648557242" in readme
+    assert "AWS Translate" not in readme
+    assert "aws_access_key_id" not in readme
 
 
 def test_distribution_scanner_detects_current_service_token_shapes(tmp_path: Path) -> None:

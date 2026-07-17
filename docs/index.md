@@ -28,7 +28,7 @@ are then recorded together.
 </p>
 
 ```bash
-python -m pip install "AIsketcher[demo] @ https://github.com/hyeonsangjeon/AIsketcher/releases/download/v0.2.0/aisketcher-0.2.0-py3-none-any.whl" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 This launches Studio. Select **Try the guided sample** to open the bundled
@@ -84,7 +84,9 @@ shows the input, all seeds, result, and evidence together.
 
 ## Release status
 
-The repository documents version 0.2.0. Until PyPI lists that version, use the
-reviewed wheel attached to the GitHub release as shown above. See the
-[changelog](changelog.md) and [0.2.0 release notes](releases/0.2.0.md) for the
+Version 0.2.1 is available from
+[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). Its package description is
+built from this repository's README, so publishing the tagged release updates
+the PyPI introduction together with the installable artifacts. See the
+[changelog](changelog.md) and [0.2.1 release notes](releases/0.2.1.md) for the
 current boundary.

@@ -172,7 +172,7 @@ class DiffusersBackend:
             diffusers = importlib.import_module("diffusers")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "Local generation requires: pip install 'AIsketcher[local]'"
+                "Local generation requires: pip install 'aisketcher[local]'"
             ) from exc
         self._runtime = _DiffusersRuntime(
             torch=torch,

@@ -370,7 +370,7 @@ class PresetManager:
             from huggingface_hub import snapshot_download
         except ImportError as exc:
             raise OptionalDependencyError(
-                "Model installation requires the 'local' extra: pip install 'AIsketcher[local]'"
+                "Model installation requires the 'local' extra: pip install 'aisketcher[local]'"
             ) from exc
 
         downloaded: list[str] = []

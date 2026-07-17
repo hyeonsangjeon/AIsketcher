@@ -1,6 +1,8 @@
 name: Publish package to PyPI
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -15,20 +17,59 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: Build, verify, and publish ${{ inputs.version }}
-    if: ${{ inputs.confirm == 'publish' }}
+  build:
+    name: Build and verify ${{ github.ref_name }}
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Check out selected revision
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Resolve and verify release version
+        id: release
+        env:
+          DISPATCH_CONFIRM: ${{ inputs.confirm }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "Publish from a v-prefixed tag; got ${GITHUB_REF}." >&2
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#v}"
+          if [[ -z "${version}" || "${version}" == "${GITHUB_REF_NAME}" ]]; then
+            echo "Could not resolve a version from ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "release" && "${GITHUB_REF_NAME}" != "${RELEASE_TAG}" ]]; then
+            echo "Release tag ${RELEASE_TAG} does not match ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${DISPATCH_CONFIRM}" != "publish" ]]; then
+              echo 'Type "publish" in the confirmation field.' >&2
+              exit 1
+            fi
+            if [[ "${version}" != "${DISPATCH_VERSION}" ]]; then
+              echo "Requested ${DISPATCH_VERSION}; selected tag contains ${version}." >&2
+              exit 1
+            fi
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -37,44 +78,63 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install build tooling
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
-      - name: Verify tagged release ref
-        env:
-          EXPECTED_VERSION: ${{ inputs.version }}
-        run: |
-          expected_ref="refs/tags/v${EXPECTED_VERSION}"
-          if [ "${GITHUB_REF}" != "${expected_ref}" ]; then
-            echo "Dispatch this workflow from ${expected_ref}; got ${GITHUB_REF}." >&2
-            exit 1
-          fi
       - name: Run release tests
         run: python -m pytest
       - name: Build wheel and source archive
         run: python -m build
       - name: Check package metadata
         run: python -m twine check dist/*
-      - name: Verify requested version
+      - name: Verify distribution names and versions
         env:
-          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: |
           python - <<'PY'
           import email
           import glob
           import os
+          import tarfile
           import zipfile
 
-          wheel = glob.glob("dist/*.whl")
-          if len(wheel) != 1:
-              raise SystemExit(f"expected exactly one wheel, found {len(wheel)}")
-          with zipfile.ZipFile(wheel[0]) as archive:
+          wheels = glob.glob("dist/*.whl")
+          sdists = glob.glob("dist/*.tar.gz")
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one wheel, found {len(wheels)}")
+          if len(sdists) != 1:
+              raise SystemExit(f"expected exactly one source archive, found {len(sdists)}")
+
+          with zipfile.ZipFile(wheels[0]) as archive:
               names = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
               if len(names) != 1:
                   raise SystemExit("wheel must contain exactly one METADATA file")
-              metadata = email.message_from_bytes(archive.read(names[0]))
-          actual = metadata["Version"]
+              wheel_metadata = email.message_from_bytes(archive.read(names[0]))
+
+          with tarfile.open(sdists[0], "r:gz") as archive:
+              members = [
+                  member
+                  for member in archive.getmembers()
+                  if member.isfile()
+                  and member.name.count("/") == 1
+                  and member.name.endswith("/PKG-INFO")
+              ]
+              if len(members) != 1:
+                  raise SystemExit("source archive must contain exactly one PKG-INFO file")
+              extracted = archive.extractfile(members[0])
+              if extracted is None:
+                  raise SystemExit("could not read source archive PKG-INFO")
+              sdist_metadata = email.message_from_bytes(extracted.read())
+
           expected = os.environ["EXPECTED_VERSION"]
-          if actual != expected:
-              raise SystemExit(f"requested version {expected!r} does not match built version {actual!r}")
-          print(f"verified distribution version {actual}")
+          for label, metadata in (("wheel", wheel_metadata), ("source archive", sdist_metadata)):
+              actual_name = metadata["Name"]
+              actual_version = metadata["Version"]
+              if actual_name != "AIsketcher":
+                  raise SystemExit(f"{label} has unexpected project name {actual_name!r}")
+              if actual_version != expected:
+                  raise SystemExit(
+                      f"requested version {expected!r} does not match "
+                      f"{label} version {actual_version!r}"
+                  )
+          print(f"verified wheel and source archive for AIsketcher {expected}")
           PY
       - name: Scan distributable contents
         run: python tests/docs/scan_distribution.py --repository . dist/*
@@ -86,5 +146,44 @@ jobs:
           /tmp/aisketcher-wheel-smoke/bin/python -m pip install "${wheel_path}[demo]"
           /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
           /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
+      - name: Upload verified release distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions-${{ steps.release.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  attach-release-assets:
+    name: Attach verified distributions to GitHub Release
+    if: github.event_name == 'release'
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist
+      - name: Attach distributions to the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}"
+
+  publish:
+    name: Publish ${{ needs.build.outputs.version }} to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified release distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist
       - name: Publish with PyPI Trusted Publishing
         uses: pypa/gh-action-pypi-publish@v1.14.0
