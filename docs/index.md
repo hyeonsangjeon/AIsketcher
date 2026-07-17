@@ -28,7 +28,7 @@ are then recorded together.
 </p>
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 This launches Studio. Select **Try the guided sample** to open the bundled

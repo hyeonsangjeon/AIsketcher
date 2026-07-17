@@ -38,11 +38,18 @@ sketchers who need more than a one-off image.
 ## Install
 
 AIsketcher 0.2.1 is published on
-[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). Pin the version for a
-reproducible install:
+[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). The brand is **AIsketcher**;
+the PyPI install identifier is lowercase `aisketcher`, matching the Python
+import and CLI:
 
 ```bash
-python -m pip install "AIsketcher==0.2.1"
+pip install aisketcher
+```
+
+Pin the public release when you need a reproducible install:
+
+```bash
+python -m pip install "aisketcher==0.2.1"
 ```
 
 The lightweight SDK does not install Torch, Diffusers, model weights, or the
@@ -58,14 +65,14 @@ python -m pip install -e ".[dev]"
 Install optional local generation or the Studio separately:
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1"
-python -m pip install "AIsketcher[local,demo]==0.2.1"
+python -m pip install "aisketcher[demo]==0.2.1"
+python -m pip install "aisketcher[local,demo]==0.2.1"
 ```
 
 The complete model-free first run is one line:
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 Model downloads happen only after you explicitly choose a local preset. Guided

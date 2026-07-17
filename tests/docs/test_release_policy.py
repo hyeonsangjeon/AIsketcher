@@ -118,7 +118,8 @@ def test_readme_exposes_the_packaged_first_run() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "aisketcher init && aisketcher studio" in readme
-    assert 'AIsketcher[demo]==0.2.1' in readme
+    assert "\npip install aisketcher\n" in readme
+    assert 'aisketcher[demo]==0.2.1' in readme
     assert "Until PyPI lists" not in readme
     assert "releases/download/v0.2.0" not in readme
 

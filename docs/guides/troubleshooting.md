@@ -11,7 +11,7 @@ Install the optional Studio dependencies in the same Python environment as
 AIsketcher. Confirm which executable the shell resolves before reinstalling.
 
 ```bash
-python -m pip show AIsketcher gradio
+python -m pip show aisketcher gradio
 command -v aisketcher
 ```
 
@@ -55,7 +55,7 @@ If installation reports an optional-dependency error, install the local
 runtime first:
 
 ```bash
-python -m pip install "AIsketcher[local]==0.2.1"
+python -m pip install "aisketcher[local]==0.2.1"
 ```
 
 Do not copy a partial Hugging Face cache into AIsketcher's managed directory.

@@ -3,13 +3,23 @@
 Version 0.2.1 is published on
 [PyPI](https://pypi.org/project/AIsketcher/0.2.1/). The commands below pin the
 public release so a later package update cannot silently change the setup.
+PyPI names are case-insensitive; install `aisketcher` in lowercase to match the
+Python import and command-line interface.
+
+For the latest release:
+
+```bash
+pip install aisketcher
+```
+
+Use one of the pinned profiles below when you need a reproducible environment.
 
 ## Install the layer you need
 
 === "Core SDK"
 
     ```bash
-    python -m pip install "AIsketcher==0.2.1"
+    python -m pip install "aisketcher==0.2.1"
     ```
 
     This installs preparation, recipe, lineage, export, and replay types. It
@@ -18,7 +28,7 @@ public release so a later package update cannot silently change the setup.
 === "Local generation"
 
     ```bash
-    python -m pip install "AIsketcher[local]==0.2.1"
+    python -m pip install "aisketcher[local]==0.2.1"
     ```
 
     Local presets download their pinned model files only after confirmation.
@@ -26,20 +36,20 @@ public release so a later package update cannot silently change the setup.
 === "Studio"
 
     ```bash
-    python -m pip install "AIsketcher[demo]==0.2.1"
+    python -m pip install "aisketcher[demo]==0.2.1"
     aisketcher init
     aisketcher studio
     ```
 
     `init` writes a versioned per-user settings file and never downloads a
     model. Guided Sample then works from its bundled, hash-verified fixture
-    without a network or GPU. Install `AIsketcher[local,demo]` instead for live
+    without a network or GPU. Install `aisketcher[local,demo]` instead for live
     local generation.
 
 For the complete model-free first run:
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 `aisketcher init` protects an existing settings file. Use `--path` for a

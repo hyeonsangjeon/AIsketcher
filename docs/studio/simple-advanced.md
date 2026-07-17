@@ -6,7 +6,7 @@ Studio code, console command, and reviewed Guided Sample are packaged in the
 base wheel; the `demo` extra adds the Gradio runtime needed to launch them.
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1"
+python -m pip install "aisketcher[demo]==0.2.1"
 aisketcher init  # First run only; omit when settings already exist.
 aisketcher studio
 ```

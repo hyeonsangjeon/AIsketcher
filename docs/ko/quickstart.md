@@ -12,25 +12,35 @@ AIsketcher는 한 장의 스케치에서 여러 디자인 방향을 탐색하고
 AIsketcher 0.2.1은
 [PyPI](https://pypi.org/project/AIsketcher/0.2.1/)에서 설치할 수 있습니다.
 나중에 패키지가 갱신되어도 같은 환경을 만들 수 있도록 버전을 고정합니다.
+PyPI 패키지명은 대소문자를 구분하지 않지만 Python import와 CLI에 맞춰 설치
+대상은 소문자 `aisketcher`로 표기합니다.
+
+최신 버전은 다음 한 줄로 설치합니다.
+
+```bash
+pip install aisketcher
+```
+
+동일한 환경을 재현하려면 아래처럼 공개 버전을 고정합니다.
 
 기본 패키지에는 Torch, Diffusers, 모델 파일, Gradio 실행 환경이 포함되지
 않습니다. Studio 코드와 가이드 샘플은 기본 wheel에 들어 있으며 `demo`
 선택 의존성이 화면을 실행할 Gradio 환경을 추가합니다.
 
 ```bash
-python -m pip install "AIsketcher==0.2.1"
+python -m pip install "aisketcher==0.2.1"
 ```
 
 로컬 이미지 생성 기능은 선택 의존성으로 추가합니다.
 
 ```bash
-python -m pip install "AIsketcher[local]==0.2.1"
+python -m pip install "aisketcher[local]==0.2.1"
 ```
 
 Studio 화면을 사용하려면 `demo` 선택 의존성을 설치합니다.
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1"
+python -m pip install "aisketcher[demo]==0.2.1"
 aisketcher init
 aisketcher studio
 ```
@@ -39,7 +49,7 @@ aisketcher studio
 `aisketcher init &&` 부분은 빼세요.
 
 ```bash
-python -m pip install "AIsketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
 ```
 
 `init`은 최초 한 번 버전이 명시된 사용자 YAML 설정을 만들며 모델을 받지 않습니다.
@@ -53,7 +63,7 @@ control, 네 개의 실제 로컬 생성 후보, 선택 정보, 검증용 manife
 실제 로컬 생성과 Studio를 함께 설치하려면 다음 명령을 사용합니다.
 
 ```bash
-python -m pip install "AIsketcher[local,demo]==0.2.1"
+python -m pip install "aisketcher[local,demo]==0.2.1"
 ```
 
 ## 기본 흐름

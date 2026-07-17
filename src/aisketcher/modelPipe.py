@@ -74,7 +74,7 @@ def img2img(
         torch = importlib.import_module("torch")
     except ImportError as exc:
         raise OptionalDependencyError(
-            "Legacy img2img requires: pip install 'AIsketcher[local]'"
+            "Legacy img2img requires: pip install 'aisketcher[local]'"
         ) from exc
 
     with Image.open(img_path) as opened:
