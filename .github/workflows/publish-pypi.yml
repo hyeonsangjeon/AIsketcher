@@ -32,7 +32,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - name: Check out selected revision
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Resolve and verify release version

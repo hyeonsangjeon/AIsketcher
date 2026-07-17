@@ -40,7 +40,7 @@ def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     assert "scan_distribution.py --repository . dist/*" in workflow
     assert "wheel_smoke.py" in workflow
     assert "gh-action-pypi-publish" not in workflow
-    assert "actions/checkout@v6" in workflow
+    assert workflow.count("actions/checkout@v7") == 5
     assert "actions/setup-python@v6" in workflow
     assert "actions/upload-artifact@v7" in workflow
     assert workflow.count("persist-credentials: false") == 3
@@ -61,6 +61,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "environment: pypi" in workflow
     assert "id-token: write" in workflow
     assert "pypa/gh-action-pypi-publish@v1.14.0" in workflow
+    assert "actions/checkout@v7" in workflow
     assert "actions/upload-artifact@v7" in workflow
     assert workflow.count("actions/download-artifact@v8") == 2
     assert "needs: [build, publish]" in workflow
@@ -80,6 +81,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
 
 def test_pages_uses_current_official_major_actions() -> None:
     workflow = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
+    assert "actions/checkout@v7" in workflow
     assert "actions/configure-pages@v6" in workflow
     assert "actions/upload-pages-artifact@v5" in workflow
     assert "actions/deploy-pages@v5" in workflow
