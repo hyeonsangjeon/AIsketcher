@@ -39,14 +39,15 @@ project overrides.
 
 [![AIsketcher Studio English Simple view with a privacy-reviewed family sketch, selected result, four deterministic directions, and manifest-backed settings](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)
 
-*Actual local English Studio with the selected direction fixed to seed
+*Actual local English Studio with the HPO-selected direction fixed to seed
 `6764547109648557242` and pinned `sdxl-canny-lite@1`. Select the image to
 inspect the full-size interface.*
 
 The documentation-only fixture displays its prompt, profile, and structure
-directly from the authenticated manifest. It is separate from the bundled
-Pocket Kingdom Guided Sample. Model weights were already local, so this
-capture required no model download or image upload.
+directly from the authenticated manifest. Twelve new candidates were reviewed
+in four bounded HPO rounds before the selected direction was captured. It is
+separate from the bundled Pocket Kingdom Guided Sample. Model weights were
+already local, so this capture required no model download or image upload.
 
 ## Built for design decisions
 

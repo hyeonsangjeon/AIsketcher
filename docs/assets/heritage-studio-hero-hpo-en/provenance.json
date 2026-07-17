@@ -1,0 +1,88 @@
+{
+  "schema": "aisketcher.studio-hero-hpo-fixture/v1",
+  "status": "complete",
+  "created_on": "2026-07-17",
+  "purpose": "English Gradio Studio Hero selected by a bounded 2026 HPO",
+  "source": {
+    "path": "source.png",
+    "sha256": "50f1b2f9bc88c20e45cc38fc8af5e261fab8061fa456c7f9a654e7b8c2017864",
+    "description": "reviewed metadata-free family-artwork derivative",
+    "legacy_jpeg_copied": false,
+    "private_name_present": false,
+    "camera_or_gps_metadata_present": false
+  },
+  "heritage_record": {
+    "repository_url": "https://github.com/hyeonsangjeon/aws-korea-2023-coding-school",
+    "repository_commit": "4b3a22098f239dda18134eb5128094aa9892ed5e",
+    "documented_brief_ko": "알파벳 A, 글자, 추상화, 멋진 펜아트",
+    "recorded_runtime_prompt_ko": "특이한 풍경, 환상적인 그림, 복잡한 나라, 귀여운 케릭터",
+    "effective_prompt_en": "An elaborate miniature fantasy country built in the sketch's tall letter A silhouette, populated by delightful tiny mascots. Painted metal towers, enamel creatures, glowing glass windows, layered architectural depth, vivid cyan, cobalt, vermilion, yellow and gold, crisp handcrafted details, dramatic studio lighting, premium concept maquette photograph.",
+    "translation_method": "human-written HPO direction for the pinned v2 model",
+    "legacy_translation_recovered": false,
+    "active_seed": 6764547109648557242,
+    "recorded_alternative_seeds": [
+      6854547109648557242,
+      6634547109688557242
+    ],
+    "documentation_layout_seed": 6764547109648557243
+  },
+  "hpo": {
+    "new_candidates_generated": 12,
+    "rounds": [
+      {
+        "name": "material direction",
+        "candidates": 4,
+        "fixed_seed": 6764547109648557242
+      },
+      {
+        "name": "prompt repair",
+        "candidates": 3,
+        "fixed_seed": 6764547109648557242
+      },
+      {
+        "name": "minimal prompt control sweep",
+        "candidates": 2,
+        "fixed_seed": 6764547109648557242
+      },
+      {
+        "name": "preserved seed sweep",
+        "candidates": 3,
+        "baseline_reused": true
+      }
+    ],
+    "hard_gates": [
+      "strong central read at thumbnail size",
+      "main source landmarks remain legible",
+      "dimensional material depth",
+      "no empty center or dominant background pattern",
+      "no pseudo-text, crop, or malformed face"
+    ],
+    "manual_weights": {
+      "first_glance_thumbnail": 30,
+      "source_landmark_fidelity": 25,
+      "material_depth": 20,
+      "character_story_appeal": 15,
+      "artifact_cleanliness": 10
+    },
+    "selected_direction": "architectural miniature",
+    "selection_reason": "best current-model balance of premium material depth, central focus, landmark continuity, and artifact cleanliness",
+    "technical_scores_are_aesthetic_claims": false
+  },
+  "generation": {
+    "manifest": "manifest.json",
+    "manifest_sha256": "a940196ca8625ae57aaeb3d02e7564eecba6456116b7bbf691a97ceee9ae02be",
+    "selected_candidate": "candidate-ffd8b272e6ec",
+    "selected_seed": 6764547109648557242,
+    "preset": "sdxl-canny-lite@1",
+    "device": "mps",
+    "offline": true,
+    "downloaded_bytes": 0,
+    "mps_retries": 0
+  },
+  "privacy": {
+    "private_user_data_present": false,
+    "original_filename_retained": false,
+    "public_person_attribution_allowed": false
+  },
+  "artwork_license": "../../../ARTWORK_LICENSE.md"
+}
