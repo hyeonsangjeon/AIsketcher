@@ -188,7 +188,7 @@ checked in with replayable manifests. The manual presents the final result
 alongside every alternative instead of substituting private reference art.
 
 Artwork is **not** licensed under MIT. Read the
-[artwork notice](https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md)
+[artwork notice][artwork-license]
 before using any image from this repository.
 
 ## Compatibility
@@ -215,6 +215,9 @@ and never downloads model weights.
 ## License
 
 Source code and documentation text are licensed under the
-[MIT License](https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE).
+[MIT License][mit-license].
 Images, drawings, generated derivatives, and other artwork are excluded; see
-the [artwork notice](https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md).
+the [artwork notice][artwork-license].
+
+[mit-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE
+[artwork-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md
