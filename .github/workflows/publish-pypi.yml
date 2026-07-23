@@ -186,4 +186,4 @@ jobs:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
       - name: Publish with PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: pypa/gh-action-pypi-publish@v1.14.1
