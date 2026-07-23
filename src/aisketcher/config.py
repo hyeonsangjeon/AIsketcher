@@ -57,7 +57,7 @@ class AIsketcherConfig:
     """
 
     schema_version: int = CONFIG_SCHEMA_VERSION
-    preset: str = "sdxl-canny-lite@1"
+    preset: str = "flux2-klein-edit@1"
     device: str = "auto"
     output_count: int = 4
     seed_mode: SeedMode | str = SeedMode.SCOUT

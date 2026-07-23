@@ -57,6 +57,19 @@ def _contains_sensitive_text(value: str) -> bool:
     return any(pattern.search(value) for pattern in _SENSITIVE_PATTERNS)
 
 
+def _contains_sensitive_value(value: Any) -> bool:
+    if isinstance(value, str):
+        return _contains_sensitive_text(value)
+    if isinstance(value, Mapping):
+        return any(
+            _contains_sensitive_value(key) or _contains_sensitive_value(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_sensitive_value(item) for item in value)
+    return False
+
+
 def _sanitize_backend_metadata(metadata_value: Mapping[str, Any]) -> dict[str, Any]:
     """Keep only bounded, non-sensitive primitives from built-in backends."""
 
@@ -263,7 +276,7 @@ def runtime_versions(backend: str) -> dict[str, str]:
     try:
         package_version = metadata.version("AIsketcher")
     except metadata.PackageNotFoundError:
-        package_version = "0.2.1"
+        package_version = "0.3.0"
     versions = {
         "aisketcher": package_version,
         "python": platform.python_version(),
@@ -272,7 +285,7 @@ def runtime_versions(backend: str) -> dict[str, str]:
         "opencv": cv2.__version__,
         "backend": backend,
     }
-    if backend == "diffusers":
+    if backend in {"diffusers", "flux2-klein"}:
         for distribution in ("diffusers", "torch", "transformers"):
             try:
                 versions[distribution] = metadata.version(distribution)
@@ -288,8 +301,14 @@ def export_study(study: Study, path: str | Path, *, overwrite: bool = False) -> 
         raise ValidationError("Export paths must not be symbolic links")
     if output.exists() and not overwrite:
         raise ValidationError(f"{output} already exists; pass overwrite=True to replace it")
-    if _contains_sensitive_text(study.recipe.prompt) or _contains_sensitive_text(
-        study.recipe.negative_prompt
+    if (
+        _contains_sensitive_text(study.recipe.prompt)
+        or (
+            study.recipe.model_prompt is not None
+            and _contains_sensitive_text(study.recipe.model_prompt)
+        )
+        or _contains_sensitive_value(study.recipe.prompt_metadata)
+        or _contains_sensitive_text(study.recipe.negative_prompt)
     ):
         raise ValidationError(
             "Recipe text appears to contain a credential or token; refusing to export it"

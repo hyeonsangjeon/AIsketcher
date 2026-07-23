@@ -7,6 +7,7 @@ and importable without Gradio, Torch, or Diffusers.
 
 from __future__ import annotations
 
+import gc
 import inspect
 import json
 import re
@@ -19,14 +20,22 @@ import time
 import uuid
 import weakref
 import zipfile
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from hashlib import sha256
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from ..manifest import canonical_sha256
+from ..prompt_normalization import (
+    KoreanEnglishTranslator,
+    MarianKoreanEnglishTranslator,
+    NormalizedPrompt,
+    contains_hangul,
+    normalize_prompt,
+)
 from .i18n import normalize_language, text
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -36,6 +45,8 @@ MAX_REPLAY_ARCHIVE_BYTES = MAX_UPLOAD_BYTES
 MAX_REPLAY_FILES = 64
 MAX_REPLAY_FILE_BYTES = 50 * 1024 * 1024
 MAX_REPLAY_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+MAX_PROMPT_CHARS = 10_000
+MAX_PROMPT_METADATA_BYTES = 20_000
 ALLOWED_IMAGE_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
 OUTPUT_COUNTS = frozenset({1, 4, 8})
 DISPLAY_BADGE_KEYS = {
@@ -43,6 +54,10 @@ DISPLAY_BADGE_KEYS = {
     "closest structure": "badge_closest_structure",
     "cleanest edges": "badge_cleanest_edges",
 }
+
+_PROCESS_GENERATION_LOCK = threading.Lock()
+_PROCESS_GENERATION_STATE_LOCK = threading.RLock()
+_PROCESS_ACTIVE_GENERATION_SESSIONS: set[str] = set()
 
 
 def _file_sha256(path: Path) -> str:
@@ -55,6 +70,10 @@ def _file_sha256(path: Path) -> str:
 
 class StudioAppError(RuntimeError):
     """A safe error that may be shown directly in the example UI."""
+
+
+class StudioJobCancelled(StudioAppError):
+    """A queued or active Studio operation was stopped by its owning session."""
 
 
 class StudioFactory(Protocol):
@@ -127,6 +146,14 @@ class StudioIntent:
     prompt: str
     profile: str
     structure: str
+    model_prompt: str | None = None
+    prompt_metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def generation_prompt(self) -> str:
+        """Return the model-facing prompt while retaining the user's original."""
+
+        return self.model_prompt or self.prompt
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,6 +434,22 @@ class RunRegistry:
             record.touched_at = time.monotonic()
             return record
 
+    def latest(self, session_id: str) -> RunRecord | None:
+        """Return the newest retained run owned by ``session_id``."""
+
+        with self._lock:
+            self._prune()
+            matching = [
+                record
+                for record in self._records.values()
+                if record.session_id == session_id
+            ]
+            if not matching:
+                return None
+            record = max(matching, key=lambda item: item.created_at)
+            record.touched_at = time.monotonic()
+            return record
+
 
 class ModelPool:
     """Construct each local preset once and serialize cache changes."""
@@ -421,6 +464,15 @@ class ModelPool:
             if preset not in self._models:
                 self._models[preset] = self.factory(preset)
             return self._models[preset]
+
+    def discard(self, preset: str, *, expected: Any | None = None) -> Any | None:
+        """Evict a failed model so the next request can construct a clean one."""
+
+        with self._lock:
+            current = self._models.get(preset)
+            if current is None or (expected is not None and current is not expected):
+                return None
+            return self._models.pop(preset)
 
 
 @dataclass(frozen=True, slots=True)
@@ -641,6 +693,34 @@ def _extract_replay_archive(source: Path, destination: Path) -> Path:
     return manifest_paths[0]
 
 
+def _reject_undeclared_replay_files(
+    destination: Path,
+    manifest_path: Path,
+    artifacts: Sequence[tuple[PurePosixPath, Path]],
+) -> None:
+    """Require a canonical ZIP to contain only its manifest and declared files."""
+
+    root = destination.resolve()
+    expected = {manifest_path.resolve().relative_to(root).as_posix()}
+    expected.update(
+        artifact.resolve().relative_to(root).as_posix()
+        for _relative, artifact in artifacts
+    )
+    actual = {
+        path.resolve().relative_to(root).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file()
+    }
+    extras = sorted(actual - expected)
+    if extras:
+        names = ", ".join(extras[:3])
+        if len(extras) > 3:
+            names += f", and {len(extras) - 3} more"
+        raise StudioAppError(
+            f"The export ZIP contains files not declared by its manifest ({names})."
+        )
+
+
 def prepare_replay_input(source: str | Path, destination_dir: str | Path) -> Path:
     """Stage a canonical manifest or safely extract a canonical export ZIP.
 
@@ -667,7 +747,15 @@ def prepare_replay_input(source: str | Path, destination_dir: str | Path) -> Pat
             raise StudioAppError("The export ZIP is larger than 20 MB.")
         try:
             manifest_path = _extract_replay_archive(source_path, destination)
-            _load_replay_bundle(manifest_path, uploaded_json=False)
+            _payload, archive_artifacts = _load_replay_bundle(
+                manifest_path,
+                uploaded_json=False,
+            )
+            _reject_undeclared_replay_files(
+                destination,
+                manifest_path,
+                archive_artifacts,
+            )
         except StudioAppError:
             shutil.rmtree(destination, ignore_errors=True)
             raise
@@ -713,6 +801,29 @@ def _call_supported(function: Callable[..., Any], /, *args: Any, **kwargs: Any) 
     return function(*args, **supported)
 
 
+def _accepts_any_keyword(function: Callable[..., Any], names: Sequence[str]) -> bool:
+    """Return whether a callable can receive at least one named refinement input."""
+
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return False
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return True
+    keyword_kinds = {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    }
+    return any(
+        name in signature.parameters
+        and signature.parameters[name].kind in keyword_kinds
+        for name in names
+    )
+
+
 def _default_studio_factory(preset: str) -> Any:
     try:
         from aisketcher import Studio
@@ -726,12 +837,129 @@ def _default_studio_factory(preset: str) -> Any:
         raise StudioAppError(f"Could not load the local preset: {exc}") from exc
 
 
-def _intent(prompt: str, profile: str, structure: str) -> Any:
+def _intent(
+    prompt: str,
+    profile: str,
+    structure: str,
+    *,
+    model_prompt: str | None = None,
+    prompt_metadata: Mapping[str, Any] | None = None,
+) -> Any:
+    metadata = dict(prompt_metadata or {})
     try:
         from aisketcher import Intent
     except (ImportError, AttributeError):
-        return StudioIntent(prompt=prompt, profile=profile, structure=structure)
-    return Intent(prompt=prompt, profile=profile, structure=structure)
+        return StudioIntent(
+            prompt=prompt,
+            profile=profile,
+            structure=structure,
+            model_prompt=model_prompt,
+            prompt_metadata=metadata,
+        )
+    return Intent(
+        prompt=prompt,
+        profile=profile,
+        structure=structure,
+        model_prompt=model_prompt,
+        prompt_metadata=metadata,
+    )
+
+
+def _normalization_metadata(result: NormalizedPrompt) -> dict[str, Any]:
+    """Return bounded audit metadata without duplicating the two prompt fields."""
+
+    value = result.to_dict()
+    return {
+        "normalization": {
+            "detected_language": value["detected_language"],
+            "status": value["status"],
+            "translator": value["translator"],
+            "enhancement_applied": value["enhancement_applied"],
+        }
+    }
+
+
+def _refined_prompt_metadata(
+    value: Any,
+    *,
+    original_instruction: str,
+    model_instruction: str,
+    automatic: bool,
+    normalization: NormalizedPrompt,
+) -> dict[str, Any]:
+    """Copy prompt metadata and append one replay-safe refinement event."""
+
+    if isinstance(value, Mapping):
+        try:
+            copied = json.loads(json.dumps(dict(value), ensure_ascii=False))
+        except (TypeError, ValueError):
+            copied = {}
+    else:
+        copied = {}
+    if not isinstance(copied, dict):
+        copied = {}
+    prior = copied.get("refinements")
+    refinements = list(prior) if isinstance(prior, list) else []
+    refinements.append(
+        {
+            "original_instruction": original_instruction,
+            "model_instruction": model_instruction,
+            "automatic": automatic,
+            "normalization": _normalization_metadata(normalization)["normalization"],
+        }
+    )
+    copied["refinements"] = refinements
+    return copied
+
+
+def _validate_refinement_payload(
+    original_prompt: str,
+    model_prompt: str,
+    prompt_metadata: Mapping[str, Any],
+) -> None:
+    """Fail before generation when refinement would exceed recipe limits."""
+
+    if len(original_prompt) > MAX_PROMPT_CHARS:
+        raise StudioAppError(
+            "Refinement would make the original prompt exceed the "
+            "10,000-character prompt limit."
+        )
+    if len(model_prompt) > MAX_PROMPT_CHARS:
+        raise StudioAppError(
+            "Refinement would make the model prompt exceed the "
+            "10,000-character prompt limit."
+        )
+    try:
+        encoded_metadata = json.dumps(
+            dict(prompt_metadata),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise StudioAppError(
+            "Refinement metadata must contain JSON-compatible values."
+        ) from exc
+    if len(encoded_metadata) > MAX_PROMPT_METADATA_BYTES:
+        raise StudioAppError(
+            "Refinement would exceed the 20,000-byte prompt metadata limit."
+        )
+
+
+def _translation_unavailable_message(language: str) -> str:
+    if normalize_language(language) == "ko":
+        return (
+            "한국어 프롬프트를 감지했지만 로컬 한→영 번역 모델이 준비되지 "
+            "않았습니다. aisketcher[translate]를 설치하고 고정된 번역 모델을 "
+            "준비한 뒤 다시 시도하세요. 원문은 보존되었고 이미지 모델로 "
+            "전송되지 않았습니다."
+        )
+    return (
+        "Korean text was detected, but the local Korean-to-English translator "
+        "is not ready. Install aisketcher[translate] and prepare the pinned "
+        "translation model, then try again. The original prompt was preserved "
+        "and was not sent to the image model."
+    )
 
 
 def _seed_plan(
@@ -862,9 +1090,16 @@ def _materialize_candidate(value: Any, destination: Path) -> Path:
     return destination
 
 
-def _materialize_study(study: Any, destination: Path) -> tuple[CandidateView, ...]:
+def _materialize_study(
+    study: Any,
+    destination: Path,
+    *,
+    should_cancel: Callable[[], bool] | None = None,
+) -> tuple[CandidateView, ...]:
     candidates: list[CandidateView] = []
     for index, candidate in enumerate(_candidate_items(study)):
+        if should_cancel is not None and should_cancel():
+            raise StudioJobCancelled("Stopped by user.")
         image_path = _materialize_candidate(
             _image_value(candidate), destination / f"candidate-{index + 1}.png"
         )
@@ -881,6 +1116,7 @@ class AppController:
         *,
         studio_factory: StudioFactory | None = None,
         model_installer: Any = None,
+        prompt_translator: KoreanEnglishTranslator | None = None,
         workspace_root: str | Path | None = None,
         guided_root: str | Path | None = None,
         registry: RunRegistry | None = None,
@@ -898,7 +1134,239 @@ class AppController:
         self.registry = registry or RunRegistry()
         self.pool = ModelPool(studio_factory or _default_studio_factory)
         self.model_installer = model_installer
+        # Construction is dependency-lazy and cache-only.  No translation
+        # dependency is imported and no model file is downloaded until Hangul
+        # is actually submitted. Applications may inject another translator.
+        self.prompt_translator = (
+            prompt_translator
+            if prompt_translator is not None
+            else MarianKoreanEnglishTranslator()
+        )
         self.guided = GuidedSampleCatalog(guided_root)
+        self._operation_lock = threading.RLock()
+        self._operation_tokens: dict[str, threading.Event] = {}
+        self._operation_targets: dict[str, Any] = {}
+        self._claimed_operation_tokens: dict[str, threading.Event] = {}
+
+    def _resolve_model_installer(self) -> Any:
+        """Return the configured installer, creating the local default lazily."""
+
+        installer = self.model_installer
+        if installer is not None:
+            return installer
+        try:
+            from aisketcher import PresetManager
+        except (ImportError, AttributeError) as exc:
+            raise StudioAppError(
+                "Model setup is unavailable. Install AIsketcher with the 'local' extra."
+            ) from exc
+        installer = PresetManager()
+        self.model_installer = installer
+        return installer
+
+    def plan_model_install(self, preset: str) -> Any | None:
+        """Return the installer's current cache-only plan when it supports one.
+
+        Custom callable installers predate the explicit planning API, so the
+        Studio treats a missing or unusable ``plan_install`` method as a signal
+        to retain its static, backwards-compatible model guidance.
+        """
+
+        try:
+            installer = self._resolve_model_installer()
+        except StudioAppError:
+            return None
+        plan_install = getattr(installer, "plan_install", None)
+        if not callable(plan_install):
+            return None
+        try:
+            return plan_install(preset)
+        except Exception:  # noqa: BLE001 - optional installer compatibility boundary
+            return None
+
+    def begin_operation(self, state_value: Mapping[str, Any] | AppState | None) -> threading.Event:
+        """Create or reuse the per-session cooperative cancellation token."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            operation_event = self._operation_tokens.get(state.session_id)
+            if operation_event is None or operation_event.is_set():
+                operation_event = threading.Event()
+                self._operation_tokens[state.session_id] = operation_event
+            return operation_event
+
+    def claim_operation(self, state_value: Mapping[str, Any] | AppState | None) -> threading.Event:
+        """Claim one server operation for a session, rejecting duplicate clicks."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            if state.session_id in self._claimed_operation_tokens:
+                raise StudioAppError(text(state.language, "generation_already_running"))
+            operation_event = self._operation_tokens.get(state.session_id)
+            if operation_event is None or operation_event.is_set():
+                operation_event = threading.Event()
+                self._operation_tokens[state.session_id] = operation_event
+            self._claimed_operation_tokens[state.session_id] = operation_event
+            return operation_event
+
+    def finish_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        operation_event: threading.Event,
+    ) -> None:
+        """Forget an event only when it is still the active session operation."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            if self._operation_tokens.get(state.session_id) is operation_event:
+                self._operation_tokens.pop(state.session_id, None)
+                self._operation_targets.pop(state.session_id, None)
+            if self._claimed_operation_tokens.get(state.session_id) is operation_event:
+                self._claimed_operation_tokens.pop(state.session_id, None)
+
+    def clear_operation(self, state_value: Mapping[str, Any] | AppState | None) -> None:
+        """Drop UI bookkeeping after a queued event completes or is cancelled."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            # A Stop click can cancel Gradio's queued event while the backend
+            # thread is still unwinding. Keep that active claim and its token
+            # until ``finish_operation`` runs so a quick second click cannot
+            # overlap the first GPU job.
+            if state.session_id not in self._claimed_operation_tokens:
+                self._operation_tokens.pop(state.session_id, None)
+                self._operation_targets.pop(state.session_id, None)
+
+    def operation_state(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+    ) -> str:
+        """Return ``idle``, ``running``, or ``stopping`` for one browser session."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            operation_event = self._operation_tokens.get(state.session_id)
+            claimed = state.session_id in self._claimed_operation_tokens
+            if operation_event is None and not claimed:
+                return "idle"
+            if operation_event is not None and operation_event.is_set():
+                return "stopping" if claimed else "idle"
+            return "running"
+
+    def _set_operation_target(self, state: AppState, target: Any) -> None:
+        with self._operation_lock:
+            self._operation_targets[state.session_id] = target
+
+    @contextmanager
+    def _generation_slot(
+        self,
+        state: AppState,
+        operation_event: threading.Event,
+    ) -> Iterator[None]:
+        """Serialize accelerator work across every controller in this process."""
+
+        with _PROCESS_GENERATION_STATE_LOCK:
+            if state.session_id in _PROCESS_ACTIVE_GENERATION_SESSIONS:
+                raise StudioAppError(text(state.language, "generation_already_running"))
+            _PROCESS_ACTIVE_GENERATION_SESSIONS.add(state.session_id)
+        acquired = False
+        try:
+            while not acquired:
+                self._check_cancelled(operation_event)
+                acquired = _PROCESS_GENERATION_LOCK.acquire(timeout=0.1)
+            self._check_cancelled(operation_event)
+            yield
+        finally:
+            if acquired:
+                _PROCESS_GENERATION_LOCK.release()
+            with _PROCESS_GENERATION_STATE_LOCK:
+                _PROCESS_ACTIVE_GENERATION_SESSIONS.discard(state.session_id)
+
+    @staticmethod
+    def _is_accelerator_oom(exc: BaseException) -> bool:
+        name = type(exc).__name__.casefold()
+        message = str(exc).casefold()
+        return (
+            "outofmemory" in name
+            or "cuda out of memory" in message
+            or "cuda error: out of memory" in message
+            or "mps backend out of memory" in message
+        )
+
+    @classmethod
+    def _release_accelerator_memory(cls, target: Any) -> None:
+        """Close a failed runtime and release allocator caches when available."""
+
+        cls._request_cancel(target)
+        backend = getattr(target, "backend", None)
+        cls._request_cancel(backend)
+        for candidate in (backend, target):
+            close = getattr(candidate, "close", None)
+            if callable(close):
+                with suppress(Exception):
+                    close()
+        with suppress(Exception):
+            import torch  # type: ignore[import-not-found]
+
+            cuda = getattr(torch, "cuda", None)
+            if cuda is not None and callable(getattr(cuda, "empty_cache", None)):
+                cuda.empty_cache()
+        gc.collect()
+
+    def _recover_accelerator_failure(
+        self,
+        preset: str,
+        studio: Any,
+    ) -> None:
+        evicted = self.pool.discard(preset, expected=studio)
+        self._release_accelerator_memory(evicted or studio)
+
+    @staticmethod
+    def _check_cancelled(operation_event: threading.Event) -> None:
+        if operation_event.is_set():
+            raise StudioJobCancelled("Stopped by user.")
+
+    @staticmethod
+    def _request_cancel(target: Any) -> None:
+        """Ask an optional backend/installer to stop without assuming its API."""
+
+        if target is None:
+            return
+        for name in ("request_cancel", "cancel"):
+            method = getattr(target, name, None)
+            if callable(method):
+                with suppress(Exception):
+                    _call_supported(method)
+                # Cancellation is best-effort at provider boundaries.  The
+                # shared token remains the authoritative cooperative hook.
+                return
+
+    def cancel_operation(self, state_value: Mapping[str, Any] | AppState | None) -> str:
+        """Stop this session's queued/running work and notify optional providers."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            operation_event = self._operation_tokens.get(state.session_id)
+            if operation_event is not None:
+                operation_event.set()
+            claimed_event = self._claimed_operation_tokens.get(state.session_id)
+            active_target = (
+                self._operation_targets.get(state.session_id)
+                if operation_event is not None and claimed_event is operation_event
+                else None
+            )
+        self._request_cancel(active_target)
+        self._request_cancel(getattr(active_target, "backend", None))
+        return text(state.language, "status_stopped")
+
+    def refinement_mode(self, state_value: Mapping[str, Any] | AppState | None) -> str:
+        """Return ``guided`` or ``live`` for the selected refinement target."""
+
+        state = AppState.from_payload(state_value)
+        record = self.registry.get(state.run_id, state.session_id)
+        if state.selected_index is None:
+            raise StudioAppError(text(state.language, "refine_select_first"))
+        return "guided" if record.guided_sample is not None else "live"
 
     def close(self) -> None:
         """Remove run data and the auto-created Studio workspace, if any."""
@@ -928,9 +1396,7 @@ class AppController:
     def _gallery(
         cls, candidates: Iterable[CandidateView], language: str
     ) -> tuple[tuple[str, str], ...]:
-        return tuple(
-            (item.path, cls._candidate_label(item.label, language)) for item in candidates
-        )
+        return tuple((item.path, cls._candidate_label(item.label, language)) for item in candidates)
 
     @classmethod
     def _recommendation(cls, candidate: CandidateView, language: str) -> str:
@@ -962,9 +1428,7 @@ class AppController:
     ) -> AppResponse | None:
         """Re-render an active run in ``language`` while preserving canonical data."""
 
-        state = AppState.from_payload(state_value).replace(
-            language=normalize_language(language)
-        )
+        state = AppState.from_payload(state_value).replace(language=normalize_language(language))
         if not state.run_id:
             return None
         record = self.registry.get(state.run_id, state.session_id)
@@ -981,6 +1445,29 @@ class AppController:
             recommendation=self._recommendation(candidate, state.language),
             status=self._status(record, state),
         )
+
+    def _normalize_model_prompt(
+        self,
+        prompt: str,
+        *,
+        language: str,
+        enhance_for_design_edit: bool = False,
+    ) -> NormalizedPrompt:
+        """Normalize a user prompt before any model or GPU work begins."""
+
+        try:
+            result = normalize_prompt(
+                prompt,
+                translator=self.prompt_translator,
+                enhance_for_design_edit=enhance_for_design_edit,
+            )
+        except Exception as exc:  # noqa: BLE001 - optional translator boundary
+            if contains_hangul(prompt):
+                raise StudioAppError(_translation_unavailable_message(language)) from exc
+            raise StudioAppError(f"The creative brief could not be prepared: {exc}") from exc
+        if not result.model_ready:
+            raise StudioAppError(_translation_unavailable_message(language))
+        return result
 
     def explore(
         self,
@@ -1016,39 +1503,92 @@ class AppController:
             raise StudioAppError("Outputs must be 1, 4, or 8.")
         if structure not in {"loose", "balanced", "faithful"}:
             raise StudioAppError("Choose a valid structure setting.")
+        normalized = self._normalize_model_prompt(
+            prompt,
+            language=state.language,
+            enhance_for_design_edit=preset.startswith("flux2-klein-edit@"),
+        )
+        model_prompt = normalized.require_model_prompt()
+        prompt_metadata = _normalization_metadata(normalized)
+        operation_event = self.claim_operation(state)
         session_dir = _safe_session_dir(self.workspace_root, state.session_id)
         run_id = uuid.uuid4().hex
         run_dir = session_dir / run_id
+        studio: Any = None
         try:
-            source = sanitize_upload(image_path, run_dir)
-            studio = self.pool.get(preset)
-            prepared = studio.prepare(str(source))
-            intent = _intent(prompt, profile, structure)
-            seed_plan = _seed_plan(seed_mode, int(output_count), custom_seeds)
-            recipe = _recipe(int(steps), float(guidance))
-            overrides = {
-                "control": "canny" if canny else None,
-                "steps": int(steps),
-                "guidance": float(guidance),
-                "locks": tuple(locks),
-            }
-            study = _call_supported(
-                studio.explore,
-                prepared,
-                intent=intent,
-                outputs=int(output_count),
-                seed_plan=seed_plan,
-                recipe=recipe,
-                overrides=overrides,
-                recipe_overrides=overrides,
-            )
-            candidates = _materialize_study(study, run_dir / "results")
+            with self._generation_slot(state, operation_event):
+                self._check_cancelled(operation_event)
+                source = sanitize_upload(image_path, run_dir)
+                self._check_cancelled(operation_event)
+                studio = self.pool.get(preset)
+                self._set_operation_target(state, studio)
+                prepared = _call_supported(
+                    studio.prepare,
+                    str(source),
+                    cancellation_token=operation_event,
+                    cancel_event=operation_event,
+                    should_cancel=operation_event.is_set,
+                )
+                self._check_cancelled(operation_event)
+                intent = _intent(
+                    prompt,
+                    profile,
+                    structure,
+                    model_prompt=model_prompt,
+                    prompt_metadata=prompt_metadata,
+                )
+                seed_plan = _seed_plan(seed_mode, int(output_count), custom_seeds)
+                recipe = _recipe(int(steps), float(guidance))
+                overrides = {
+                    "control": "canny" if canny else None,
+                    "steps": int(steps),
+                    "guidance": float(guidance),
+                    "locks": tuple(locks),
+                }
+                study = _call_supported(
+                    studio.explore,
+                    prepared,
+                    intent=intent,
+                    outputs=int(output_count),
+                    seed_plan=seed_plan,
+                    recipe=recipe,
+                    overrides=overrides,
+                    recipe_overrides=overrides,
+                    cancellation_token=operation_event,
+                    cancel_event=operation_event,
+                    should_cancel=operation_event.is_set,
+                )
+                self._check_cancelled(operation_event)
+                candidates = _materialize_study(
+                    study,
+                    run_dir / "results",
+                    should_cancel=operation_event.is_set,
+                )
+        except StudioJobCancelled:
+            if studio is not None:
+                self._recover_accelerator_failure(preset, studio)
+            shutil.rmtree(run_dir, ignore_errors=True)
+            raise
         except StudioAppError:
             shutil.rmtree(run_dir, ignore_errors=True)
             raise
         except Exception as exc:  # noqa: BLE001 - optional backend boundary
             shutil.rmtree(run_dir, ignore_errors=True)
+            if operation_event.is_set():
+                if studio is not None:
+                    self._recover_accelerator_failure(preset, studio)
+                else:
+                    self._release_accelerator_memory(None)
+                raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
+            if self._is_accelerator_oom(exc):
+                if studio is not None:
+                    self._recover_accelerator_failure(preset, studio)
+                else:
+                    self._release_accelerator_memory(None)
+                raise StudioAppError(text(state.language, "gpu_out_of_memory")) from exc
             raise StudioAppError(f"Generation failed: {exc}") from exc
+        finally:
+            self.finish_operation(state, operation_event)
         record = RunRecord(
             run_id=run_id,
             session_id=state.session_id,
@@ -1060,6 +1600,8 @@ class AppController:
             prepared=prepared,
             request={
                 "brief": prompt,
+                "model_prompt": model_prompt,
+                "prompt_metadata": prompt_metadata,
                 "profile": profile,
                 "structure": structure,
                 "preset": preset,
@@ -1123,6 +1665,51 @@ class AppController:
             sync_recipe_controls=True,
         )
 
+    def recover_latest_run(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        language: str,
+    ) -> AppResponse | None:
+        """Restore the newest retained run after a browser refresh."""
+
+        state = AppState.from_payload(state_value).replace(language=normalize_language(language))
+        record = self.registry.latest(state.session_id)
+        if record is None:
+            return None
+        selected = state.selected_index if state.run_id == record.run_id else 0
+        if selected is None or not 0 <= selected < len(record.candidates):
+            selected = 0
+        state = state.replace(
+            run_id=record.run_id,
+            selected_index=selected,
+            guided=record.guided_sample is not None,
+        )
+        candidate = record.candidates[selected]
+        return AppResponse(
+            state=state.payload(),
+            source=str(record.source_path),
+            selected=candidate.path,
+            gallery=self._gallery(record.candidates, state.language),
+            recommendation=self._recommendation(candidate, state.language),
+            status=self._status(record, state),
+            prompt=(
+                record.guided_sample.prompt
+                if record.guided_sample is not None
+                else str(record.request.get("brief") or "")
+            ),
+            profile=(
+                record.guided_sample.profile
+                if record.guided_sample is not None
+                else str(record.request.get("profile") or "graphic_design")
+            ),
+            structure=(
+                record.guided_sample.structure
+                if record.guided_sample is not None
+                else str(record.request.get("structure") or "balanced")
+            ),
+            sync_recipe_controls=True,
+        )
+
     def select_candidate(
         self, state_value: Mapping[str, Any] | AppState | None, index: int
     ) -> tuple[dict[str, Any], str, str, str]:
@@ -1130,6 +1717,12 @@ class AppController:
         record = self.registry.get(state.run_id, state.session_id)
         if not 0 <= index < len(record.candidates):
             raise StudioAppError("Choose a valid candidate.")
+        pick = getattr(record.study, "pick", None)
+        if callable(pick):
+            try:
+                pick(index)
+            except Exception as exc:  # noqa: BLE001 - optional backend boundary
+                raise StudioAppError(f"The selected direction could not be recorded: {exc}") from exc
         state = state.replace(selected_index=index)
         candidate = record.candidates[index]
         record.status_key = "status_selected"
@@ -1145,42 +1738,190 @@ class AppController:
         state_value: Mapping[str, Any] | AppState | None,
         strength: str,
         locks: Sequence[str],
+        additional_instruction: str = "",
     ) -> AppResponse:
         state = AppState.from_payload(state_value)
         record = self.registry.get(state.run_id, state.session_id)
         if record.guided_sample is not None:
             raise StudioAppError(
-                "Guided Sample is read-only. Prepare Lite or Quality to refine it."
+                "Guided Sample is read-only. Open the model preparation layer and "
+                "prepare Auto or FLUX.2 Klein to create a live refinement."
                 if state.language == "en"
-                else "가이드 샘플은 읽기 전용입니다. 발전시키려면 Lite 또는 Quality 모델을 준비하세요."
+                else "가이드 샘플은 읽기 전용입니다. 모델 준비 레이어에서 Auto 또는 "
+                "FLUX.2 Klein을 준비하면 실제 발전 결과를 만들 수 있습니다."
             )
         if state.selected_index is None:
             raise StudioAppError("Select a direction first.")
+        instruction = additional_instruction.strip()
+        if len(instruction) > 600:
+            raise StudioAppError(text(state.language, "refine_instruction_too_long"))
+        automatic_instruction = not instruction
+        if automatic_instruction:
+            instruction = (
+                "Polish the selected direction while preserving its core idea and structure."
+            )
+        normalized_instruction = self._normalize_model_prompt(
+            instruction,
+            language=state.language,
+        )
+        model_instruction = normalized_instruction.require_model_prompt()
         pick = getattr(record.study, "pick", None)
         vary = getattr(record.studio, "vary", None)
         if not callable(pick) or not callable(vary):
             raise StudioAppError("The active backend does not support pick-and-vary yet.")
+        operation_event = self.claim_operation(state)
+        preset = str(record.request.get("preset") or "")
         new_id = uuid.uuid4().hex
         destination = record.workspace.parent / new_id
+        owns_studio = False
         try:
-            selected = pick(state.selected_index)
-            varied = _call_supported(
-                vary,
-                selected,
-                outputs=int(record.request.get("output_count", 4)),
-                strength=strength,
-                locks=tuple(locks),
-            )
-            destination.mkdir(parents=True, exist_ok=False)
-            source = destination / "source.png"
-            shutil.copy2(record.source_path, source)
-            candidates = _materialize_study(varied, destination / "results")
+            with self._generation_slot(state, operation_event):
+                self._set_operation_target(state, record.studio)
+                owns_studio = True
+                self._check_cancelled(operation_event)
+                selected = pick(state.selected_index)
+                original_recipe = getattr(selected, "recipe", None)
+                original_prompt = getattr(original_recipe, "prompt", None)
+                if not isinstance(original_prompt, str) or not original_prompt.strip():
+                    original_prompt = str(record.request.get("brief") or "").strip()
+                original_model_prompt = getattr(original_recipe, "model_prompt", None)
+                if (
+                    not isinstance(original_model_prompt, str)
+                    or not original_model_prompt.strip()
+                ):
+                    original_model_prompt = str(
+                        record.request.get("model_prompt") or original_prompt
+                    ).strip()
+                prompt_metadata = _refined_prompt_metadata(
+                    getattr(
+                        original_recipe,
+                        "prompt_metadata",
+                        record.request.get("prompt_metadata", {}),
+                    ),
+                    original_instruction=instruction,
+                    model_instruction=model_instruction,
+                    automatic=automatic_instruction,
+                    normalization=normalized_instruction,
+                )
+                user_instruction_label = (
+                    "추가 발전 지시"
+                    if state.language == "ko"
+                    else "Refinement instruction"
+                )
+                composed_original_prompt = (
+                    f"{original_prompt.rstrip()}\n\n{user_instruction_label}: {instruction}"
+                    if original_prompt
+                    else instruction
+                )
+                composed_model_prompt = (
+                    f"{original_model_prompt.rstrip()}\n\n"
+                    f"Refinement instruction: {model_instruction}"
+                    if original_model_prompt
+                    else model_instruction
+                )
+                _validate_refinement_payload(
+                    composed_original_prompt,
+                    composed_model_prompt,
+                    prompt_metadata,
+                )
+                selected_for_variation = selected
+                instruction_embedded = False
+                if (
+                    original_recipe is not None
+                    and is_dataclass(original_recipe)
+                    and is_dataclass(selected)
+                    and original_prompt
+                ):
+                    try:
+                        refined_recipe = replace(
+                            original_recipe,
+                            prompt=composed_original_prompt,
+                            model_prompt=composed_model_prompt,
+                            prompt_metadata=prompt_metadata,
+                        )
+                        selected_for_variation = replace(
+                            cast(Any, selected),
+                            recipe=refined_recipe,
+                        )
+                        instruction_embedded = True
+                    except (TypeError, ValueError):
+                        # Pluggable candidates may be dataclasses with stricter
+                        # constructors. Such backends can consume the explicit
+                        # keyword passed below instead.
+                        selected_for_variation = selected
+                if not instruction_embedded and not _accepts_any_keyword(
+                    vary,
+                    ("additional_instruction", "refinement_prompt"),
+                ):
+                    raise StudioAppError(
+                        "The active backend cannot apply refinement instructions "
+                        "safely. It must accept additional_instruction or "
+                        "refinement_prompt, or expose replaceable dataclass recipes."
+                    )
+                self._check_cancelled(operation_event)
+                varied = _call_supported(
+                    vary,
+                    selected_for_variation,
+                    outputs=int(record.request.get("output_count", 4)),
+                    strength=strength,
+                    locks=tuple(locks),
+                    additional_instruction=model_instruction,
+                    refinement_prompt=composed_model_prompt,
+                    cancellation_token=operation_event,
+                    cancel_event=operation_event,
+                    should_cancel=operation_event.is_set,
+                )
+                self._check_cancelled(operation_event)
+                destination.mkdir(parents=True, exist_ok=False)
+                source = destination / "source.png"
+                shutil.copy2(record.source_path, source)
+                candidates = _materialize_study(
+                    varied,
+                    destination / "results",
+                    should_cancel=operation_event.is_set,
+                )
+        except StudioJobCancelled:
+            if owns_studio:
+                if preset:
+                    self._recover_accelerator_failure(preset, record.studio)
+                else:
+                    self._release_accelerator_memory(record.studio)
+            shutil.rmtree(destination, ignore_errors=True)
+            raise
         except StudioAppError:
             shutil.rmtree(destination, ignore_errors=True)
             raise
         except Exception as exc:  # noqa: BLE001 - optional backend boundary
             shutil.rmtree(destination, ignore_errors=True)
+            if operation_event.is_set():
+                if owns_studio:
+                    if preset:
+                        self._recover_accelerator_failure(preset, record.studio)
+                    else:
+                        self._release_accelerator_memory(record.studio)
+                raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
+            if self._is_accelerator_oom(exc):
+                if preset:
+                    self._recover_accelerator_failure(preset, record.studio)
+                else:
+                    self._release_accelerator_memory(record.studio)
+                raise StudioAppError(text(state.language, "gpu_out_of_memory")) from exc
             raise StudioAppError(f"Variation failed: {exc}") from exc
+        finally:
+            self.finish_operation(state, operation_event)
+        request = dict(record.request)
+        request.update(
+            {
+                "refinement_instruction": instruction,
+                "refinement_model_instruction": model_instruction,
+                "refinement_instruction_automatic": automatic_instruction,
+                "refinement_original_prompt": composed_original_prompt,
+                "refinement_prompt": composed_model_prompt,
+                "model_prompt": composed_model_prompt,
+                "prompt_metadata": prompt_metadata,
+                "parent_run_id": record.run_id,
+            }
+        )
         new_record = RunRecord(
             run_id=new_id,
             session_id=state.session_id,
@@ -1190,7 +1931,7 @@ class AppController:
             study=varied,
             studio=record.studio,
             prepared=record.prepared,
-            request=dict(record.request),
+            request=request,
             status_key="status_variation",
         )
         self.registry.put(new_record)
@@ -1268,6 +2009,35 @@ class AppController:
                 if result_path.suffix.lower() == ".zip":
                     record.status_key = "status_export"
                     return str(result_path), self._status(record, state)
+            manifest_path = export_dir / "manifest.json"
+            instruction = record.request.get("refinement_instruction")
+            if isinstance(instruction, str) and instruction and manifest_path.is_file():
+                try:
+                    manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    if not isinstance(manifest_value, dict):
+                        raise ValueError("manifest is not an object")
+                    manifest_value["refinement"] = {
+                        "original_brief": str(record.request.get("brief") or ""),
+                        "additional_instruction": instruction,
+                        "automatic": bool(
+                            record.request.get("refinement_instruction_automatic", False)
+                        ),
+                        "parent_run_id": str(record.request.get("parent_run_id") or ""),
+                    }
+                    manifest_path.write_text(
+                        json.dumps(
+                            manifest_value,
+                            indent=2,
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                except (OSError, ValueError, json.JSONDecodeError) as exc:
+                    raise StudioAppError(
+                        "The refinement manifest could not be annotated safely."
+                    ) from exc
         archive = record.workspace / "aisketcher-study.zip"
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
             for path in sorted(export_dir.rglob("*")):
@@ -1287,32 +2057,61 @@ class AppController:
         state = AppState.from_payload(state_value)
         if not manifest_path:
             raise StudioAppError("Choose a manifest JSON or export ZIP first.")
+        operation_event = self.claim_operation(state)
         session_dir = _safe_session_dir(self.workspace_root, state.session_id)
         run_id = uuid.uuid4().hex
         run_dir = session_dir / run_id
         upload_dir = run_dir / "replay-bundle"
+        studio: Any = None
         try:
-            path = prepare_replay_input(manifest_path, upload_dir)
-            payload, _ = _load_replay_bundle(path, uploaded_json=False)
-            studio = self.pool.get(preset)
-            replay = getattr(studio, "replay", None)
-            if not callable(replay):
-                raise StudioAppError("The active backend does not support replay.")
-            # Replay is the integrity boundary: unlike optional generation
-            # overrides, strict mode must never be dropped for compatibility.
-            replay_result = replay(str(path), mode="strict")
-            study = getattr(replay_result, "study", None) or replay_result
-            if study is replay_result and hasattr(replay_result, "replayed"):
-                raise StudioAppError(
-                    "The manifest was verified, but this backend did not produce replayed candidates."
+            with self._generation_slot(state, operation_event):
+                path = prepare_replay_input(manifest_path, upload_dir)
+                payload, _ = _load_replay_bundle(path, uploaded_json=False)
+                self._check_cancelled(operation_event)
+                studio = self.pool.get(preset)
+                self._set_operation_target(state, studio)
+                replay = getattr(studio, "replay", None)
+                if not callable(replay):
+                    raise StudioAppError("The active backend does not support replay.")
+                # Replay is the integrity boundary: unlike optional generation
+                # overrides, strict mode must never be dropped for compatibility.
+                replay_result = replay(str(path), mode="strict")
+                self._check_cancelled(operation_event)
+                study = getattr(replay_result, "study", None) or replay_result
+                if study is replay_result and hasattr(replay_result, "replayed"):
+                    raise StudioAppError(
+                        "The manifest was verified, but this backend did not produce replayed candidates."
+                    )
+                candidates = _materialize_study(
+                    study,
+                    run_dir / "results",
+                    should_cancel=operation_event.is_set,
                 )
-            candidates = _materialize_study(study, run_dir / "results")
+        except StudioJobCancelled:
+            if studio is not None:
+                self._recover_accelerator_failure(preset, studio)
+            shutil.rmtree(run_dir, ignore_errors=True)
+            raise
         except StudioAppError:
             shutil.rmtree(run_dir, ignore_errors=True)
             raise
         except Exception as exc:  # noqa: BLE001 - optional backend boundary
             shutil.rmtree(run_dir, ignore_errors=True)
+            if operation_event.is_set():
+                if studio is not None:
+                    self._recover_accelerator_failure(preset, studio)
+                else:
+                    self._release_accelerator_memory(None)
+                raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
+            if self._is_accelerator_oom(exc):
+                if studio is not None:
+                    self._recover_accelerator_failure(preset, studio)
+                else:
+                    self._release_accelerator_memory(None)
+                raise StudioAppError(text(state.language, "gpu_out_of_memory")) from exc
             raise StudioAppError(f"Strict replay failed: {exc}") from exc
+        finally:
+            self.finish_operation(state, operation_event)
         source = path
         files = payload.get("files")
         source_value = files.get("source") if isinstance(files, Mapping) else None
@@ -1351,35 +2150,69 @@ class AppController:
             sync_recipe_controls=True,
         )
 
-    def install_model(self, preset: str, confirmed: bool, language: str = "en") -> str:
+    def install_model(
+        self,
+        preset: str,
+        confirmed: bool,
+        language: str = "en",
+        state_value: Mapping[str, Any] | AppState | None = None,
+    ) -> str:
         if not confirmed:
             raise StudioAppError(
                 "Review the download size and license, then confirm."
                 if normalize_language(language) == "en"
                 else "다운로드 용량과 라이선스를 확인한 뒤 동의하세요."
             )
-        installer = self.model_installer
-        if installer is None:
-            try:
-                from aisketcher import PresetManager
-            except (ImportError, AttributeError) as exc:
-                raise StudioAppError(
-                    "Model setup is unavailable. Install AIsketcher with the 'local' extra."
-                ) from exc
-            installer = PresetManager()
+        installer = self._resolve_model_installer()
         install = installer if callable(installer) else getattr(installer, "install", None)
         if not callable(install):
             raise StudioAppError("The configured model installer is invalid.")
+        state = (
+            AppState.from_payload(state_value).replace(language=normalize_language(language))
+            if state_value is not None
+            else AppState.new(language)
+        )
+        operation_event = self.claim_operation(state)
         try:
-            _call_supported(
-                install,
-                preset,
-                confirm=True,
-                trust_remote_code=False,
-                safe_tensors_only=True,
-            )
+            # Cache writes and provider initialization share the same process
+            # slot as generation. A queued session therefore owns only its
+            # cancellation token, never another session's shared installer or
+            # translator object.
+            with self._generation_slot(state, operation_event):
+                self._set_operation_target(state, installer)
+                self._check_cancelled(operation_event)
+                _call_supported(
+                    install,
+                    preset,
+                    confirm=True,
+                    trust_remote_code=False,
+                    safe_tensors_only=True,
+                    cancellation_token=operation_event,
+                    cancel_event=operation_event,
+                    should_cancel=operation_event.is_set,
+                )
+                self._check_cancelled(operation_event)
+                prepare_translator = getattr(self.prompt_translator, "prepare", None)
+                if callable(prepare_translator):
+                    self._set_operation_target(state, self.prompt_translator)
+                    _call_supported(
+                        prepare_translator,
+                        confirm=True,
+                        cancellation_token=operation_event,
+                        cancel_event=operation_event,
+                        should_cancel=operation_event.is_set,
+                    )
+                    self._check_cancelled(operation_event)
         except Exception as exc:  # noqa: BLE001 - optional provider boundary
+            if isinstance(exc, StudioJobCancelled):
+                raise
+            if operation_event.is_set():
+                self._request_cancel(installer)
+                self._request_cancel(self.prompt_translator)
+                raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
             raise StudioAppError(f"Model preparation failed: {exc}") from exc
+        finally:
+            self.finish_operation(state, operation_event)
         return (
             "Local model is ready."
             if normalize_language(language) == "en"
@@ -1405,6 +2238,7 @@ __all__ = [
     "ModelPool",
     "RunRegistry",
     "StudioAppError",
+    "StudioJobCancelled",
     "StudioIntent",
     "StudioRecipe",
     "StudioSeedPlan",

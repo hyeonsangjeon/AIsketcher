@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import tempfile
 from importlib.metadata import version
+from importlib.util import find_spec
 from pathlib import Path
 
-import AIsketcher
 import aisketcher
 from aisketcher.cli import main
 from aisketcher.studio_app import AppController, GuidedSampleCatalog, build_app
 
 
 def run() -> None:
-    assert version("AIsketcher") == aisketcher.__version__ == "0.2.1"
-    assert callable(AIsketcher.img2img)
+    assert version("AIsketcher") == aisketcher.__version__ == "0.3.0"
+    assert find_spec("AIsketcher") is None
+    assert find_spec("aisketcher.modelPipe") is None
     sample = GuidedSampleCatalog().load()
     assert len(sample.candidates) == 4
     assert sample.manifest_path.is_file()

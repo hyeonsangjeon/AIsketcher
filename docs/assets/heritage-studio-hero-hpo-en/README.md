@@ -1,8 +1,8 @@
 # Studio Hero HPO fixture
 
 This directory is the real, model-generated four-seed study shown in the
-English Studio Hero screenshot. It is a documentation-only fixture and is
-separate from the Pocket Kingdom Guided Sample bundled in the wheel.
+English Studio Hero screenshot and bundled as the v0.3 Guided Sample. Pocket
+Kingdom remains a separate documentation-only canonical lineage example.
 
 The selected first direction uses the recorded 2023 seed
 `6764547109648557242` with the pinned `sdxl-canny-lite@1` preset. The other

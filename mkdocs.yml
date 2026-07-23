@@ -63,6 +63,8 @@ nav:
       - Troubleshooting: guides/troubleshooting.md
   - Release:
       - Changelog: changelog.md
+      - 2026 model and Studio refresh: roadmap/2026-model-and-studio-refresh.md
+      - 0.3.0 release notes: releases/0.3.0.md
       - 0.2.1 release notes: releases/0.2.1.md
       - 0.2.0 release notes: releases/0.2.0.md
 

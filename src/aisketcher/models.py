@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Mapping, Sequence
@@ -229,6 +230,8 @@ class Intent:
     prompt: str
     profile: str = "graphic_design"
     structure: StructureMode | str = StructureMode.BALANCED
+    model_prompt: str | None = None
+    prompt_metadata: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         prompt = self.prompt.strip()
@@ -241,6 +244,14 @@ class Intent:
             raise ValidationError("Intent.prompt cannot exceed 10,000 characters")
         if len(profile) > 100:
             raise ValidationError("Intent.profile cannot exceed 100 characters")
+        model_prompt = self.model_prompt
+        if model_prompt is not None:
+            if not isinstance(model_prompt, str) or not model_prompt.strip():
+                raise ValidationError("Intent.model_prompt must be a non-empty string or null")
+            model_prompt = model_prompt.strip()
+            if len(model_prompt) > 10_000:
+                raise ValidationError("Intent.model_prompt cannot exceed 10,000 characters")
+        prompt_metadata = _copy_prompt_metadata(self.prompt_metadata)
         try:
             structure = StructureMode(self.structure)
         except ValueError as exc:
@@ -250,6 +261,8 @@ class Intent:
         object.__setattr__(self, "prompt", prompt)
         object.__setattr__(self, "profile", profile)
         object.__setattr__(self, "structure", structure)
+        object.__setattr__(self, "model_prompt", model_prompt)
+        object.__setattr__(self, "prompt_metadata", prompt_metadata)
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,6 +409,8 @@ class ResolvedRecipe:
     negative_prompt: str
     models: tuple[ModelReference, ...]
     capability_report: CapabilityReport
+    model_prompt: str | None = None
+    prompt_metadata: Mapping[str, Any] = field(default_factory=dict, repr=False)
     variation_strength: VariationStrength | None = None
     locks: tuple[str, ...] = ()
 
@@ -404,6 +419,23 @@ class ResolvedRecipe:
             raise ValidationError("ResolvedRecipe.preset must be 1..200 characters")
         if not self.prompt.strip() or len(self.prompt) > 10_000:
             raise ValidationError("ResolvedRecipe.prompt must be 1..10,000 characters")
+        model_prompt = self.model_prompt
+        if model_prompt is not None:
+            if not isinstance(model_prompt, str) or not model_prompt.strip():
+                raise ValidationError(
+                    "ResolvedRecipe.model_prompt must be a non-empty string or null"
+                )
+            model_prompt = model_prompt.strip()
+            if len(model_prompt) > 10_000:
+                raise ValidationError(
+                    "ResolvedRecipe.model_prompt cannot exceed 10,000 characters"
+                )
+        object.__setattr__(self, "model_prompt", model_prompt)
+        object.__setattr__(
+            self,
+            "prompt_metadata",
+            _copy_prompt_metadata(self.prompt_metadata),
+        )
         if not self.profile.strip() or len(self.profile) > 100:
             raise ValidationError("ResolvedRecipe.profile must be 1..100 characters")
         try:
@@ -455,6 +487,8 @@ class ResolvedRecipe:
         return {
             "preset": self.preset,
             "prompt": self.prompt,
+            "model_prompt": self.model_prompt,
+            "prompt_metadata": dict(self.prompt_metadata),
             "profile": self.profile,
             "structure": self.structure.value,
             "width": self.width,
@@ -521,6 +555,16 @@ class ResolvedRecipe:
         return cls(
             preset=str(value["preset"]),
             prompt=str(value["prompt"]),
+            model_prompt=(
+                str(value["model_prompt"])
+                if value.get("model_prompt") is not None
+                else None
+            ),
+            prompt_metadata=(
+                value.get("prompt_metadata", {})
+                if isinstance(value.get("prompt_metadata", {}), Mapping)
+                else {}
+            ),
             profile=str(value["profile"]),
             structure=StructureMode(value["structure"]),
             width=value["width"],
@@ -537,6 +581,32 @@ class ResolvedRecipe:
                 backend=str(report_value.get("backend", backend)), issues=issues
             ),
         )
+
+    @property
+    def generation_prompt(self) -> str:
+        """Return the normalized model input while preserving the user's original."""
+
+        return self.model_prompt or self.prompt
+
+
+def _copy_prompt_metadata(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValidationError("prompt_metadata must be an object")
+    try:
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if len(encoded.encode("utf-8")) > 20_000:
+            raise ValidationError("prompt_metadata cannot exceed 20,000 UTF-8 bytes")
+        copied = json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("prompt_metadata must contain JSON-compatible values") from exc
+    if not isinstance(copied, dict):
+        raise ValidationError("prompt_metadata must be an object")
+    return copied
 
 
 def _splitmix64(value: int) -> int:

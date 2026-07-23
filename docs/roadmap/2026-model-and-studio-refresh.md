@@ -1,10 +1,11 @@
 # 2026 model and Studio refresh
 
-Status: implementation checkpoint, 2026-07-24
+Status: v0.3.0 implementation record with explicitly marked future work,
+2026-07-24
 
-This document records the product and technical decisions agreed for the next
-AIsketcher update. It is a working checkpoint, not a promise that every model
-listed below has passed the hardware benchmark.
+This document records the product and technical decisions implemented for
+AIsketcher v0.3.0. A model listed as a candidate is not implied to have passed
+the hardware benchmark.
 
 ## Why the current default must change
 
@@ -25,8 +26,9 @@ and independently licensed at the base-model, adapter, and preprocessor level.
 
 | Product profile | Candidate | Intended use | Current decision |
 | --- | --- | --- | --- |
-| Auto / Fast Edit | `black-forest-labs/FLUX.2-klein-4B` | Photo restyling, instruction edits, multi-reference work | Benchmark on T4; leading photo/default-edit candidate |
-| Auto / Structure | `Tongyi-MAI/Z-Image-Turbo` + Alibaba-PAI Union 2.1 `2602-8steps` lite | Pencil sketch, line art, Canny/HED/Scribble-guided rendering | Benchmark on T4; leading sketch/default-structure candidate |
+| Auto / Fast Edit | `black-forest-labs/FLUX.2-klein-4B` | Sketch rendering, photo restyling, instruction edits | T4 validated; v0.3.0 default |
+| Auto / Structure | `black-forest-labs/FLUX.2-klein-4B` | Sketch-to-design with the source image used as the structural reference | T4 validated; v0.3.0 default |
+| Structure candidate | `Tongyi-MAI/Z-Image-Turbo` + Alibaba-PAI Union 2.1 `2602-8steps` lite | Canny/HED/Scribble-guided rendering | Benchmark required; not in Auto |
 | Pro Quality | `Qwen/Qwen-Image-Edit-2511` with 2509 structural path where needed | Identity-sensitive portrait/product editing and geometric edits | A100/H100 option, not a T4 default |
 | Legacy | SDXL Base + SDXL Canny | Replay and compatibility with existing manifests | Keep available, remove from the new Auto default |
 | Experimental | `microsoft/Mage-Flow-Edit-Turbo` | Newly released instruction editing | Observe and benchmark; insufficient adoption evidence for default |
@@ -41,21 +43,51 @@ unconditional package default.
 Korean input still needs a prompt-normalization/translation layer because none
 of the shortlisted official model cards guarantees Korean instruction support.
 
+## Korean prompts
+
+The Studio accepts Korean as a first-class input language even when the selected
+image model does not guarantee Korean prompt following.
+
+- Preserve and display the user's Korean original.
+- Detect Korean locally and prepare an English model prompt before generation.
+- Show the prepared prompt in a collapsible `Prompt sent to the model` field so
+  the user can inspect or edit it.
+- Store the original, prepared prompt, translation provider/model revision, and
+  whether the user edited the translation in the manifest.
+- Never translate image pixels or upload an image merely to translate text.
+- If no translator is installed/configured, explain the limitation and let the
+  user choose between installing the optional local translator or editing the
+  English prompt manually.
+
+The zero-credential local path is the public Apache-2.0
+`Helsinki-NLP/opus-mt-ko-en` Marian checkpoint, loaded lazily and pinned like
+other optional weights. The explicit model-preparation action discloses and
+prepares this 315 MB helper alongside the selected image model; normal prompt
+submission never starts an undisclosed network download. Azure Translator or
+another user-configured provider may be an alternative, but is never silently
+required. Translation and design prompt enhancement are separate steps:
+translation preserves meaning, while a small deterministic template expresses
+the requested edit and preservation constraints without inventing new creative
+content.
+
 ## Auto routing
 
-`Auto (recommended)` is the Simple-mode default.
+`Auto (recommended)` is the Simple-mode default. In v0.3.0 both sketches and
+photos resolve to the same T4-validated FLUX.2 Klein profile. The registry
+records future route metadata, but v0.3.0 does not claim to classify the
+uploaded image or persist an inferred route.
 
-- Sparse monochrome line work, drawings, and explicit structure controls route
-  to the Structure profile.
+- Sparse monochrome line work and drawings use the FLUX.2 source image as the
+  structural reference.
 - Photographs and requests that change clothing, materials, lighting, identity,
-  or scene semantics route to the Fast Edit profile.
-- Ambiguous inputs show the detected route and let the user change it before
-  downloading weights.
+  or scene semantics use the same validated FLUX.2 edit runtime.
 - Advanced mode exposes the exact profile, revision, controls, and memory
   requirements.
 
-The router decision and selected model profile are written to the exported
-manifest so a result can be replayed.
+The resolved preset and its pinned model revisions are written to the exported
+manifest so a result can be replayed. Input classification, a visible route
+override, and route-specific manifest fields remain future work and require
+their own benchmark gate before they can change `Auto`.
 
 ## Simple-mode model selector
 
@@ -63,29 +95,47 @@ Simple mode also exposes a compact model selector rather than hiding all model
 choice. Each curated option shows:
 
 - a one-line “best for” description;
-- expected first-download size and warm-generation time for the active device;
+- expected first-download size and the tested T4 warm-generation range where
+  one has been recorded;
 - minimum/recommended GPU memory;
-- installed, downloading, ready, unavailable, or experimental state;
+- whether each pinned component is already cached or still missing;
 - license name and a link to the model card.
 
 Selecting an uninstalled public default starts an explicit first-use flow:
 
 1. Explain that the model will be downloaded from the internet once and reused
    from the local cache afterward.
-2. Show real byte/file progress, not an indeterminate animation.
-3. Keep generation disabled until the complete pinned snapshot is verified.
-4. Provide Cancel and Retry.
+2. Show the current installation phase and preserve the reviewed byte estimate;
+   v0.3.0 does not claim live byte-level Hub telemetry.
+3. Keep generation disabled until every required pinned file group is present
+   and the local completion marker is valid.
+4. Provide Stop and allow retry. An active transfer stops at the next safe
+   selected-file boundary rather than pretending a partial tensor file is
+   usable.
 5. Preserve already installed models when another download fails.
 
-Arbitrary model URLs remain an Advanced-only feature. They are marked
-`unverified/custom`, require a rights acknowledgement, and never silently
-replace the curated default.
+Arbitrary model URLs are intentionally not accepted in v0.3.0 Simple or
+Advanced mode. A future custom-model flow would need a rights acknowledgement,
+safe-file policy, isolated cache namespace, and an explicit
+`unverified/custom` label before it could be exposed.
 
 ## Explore and refine interaction
 
 Exploration produces four large, readable directions without an inner
 horizontal scrollbar. Selecting a direction preserves its image, structure,
 seed, model profile, and parent manifest.
+
+The same sizing rule applies to refinement results. Four intermediate results
+must be useful at normal page zoom without opening the fullscreen viewer: each
+card keeps the source aspect ratio, has a practical minimum height, and is not
+cropped into a narrow strip by `object-fit: cover`.
+
+Opening and closing Gallery preview/fullscreen must be reversible. Closing with
+`X` restores the original gallery in place, the previous page scroll position,
+and document overflow. It must not leave a detached thumbnail strip at the top
+of the page, an empty gallery shell, duplicate preview nodes, or a fullscreen
+z-index/overflow class on the document. This interaction is a required browser
+regression test on both exploration and refinement galleries.
 
 `Refine this direction` opens an additional short instruction field. Examples:
 
@@ -114,6 +164,14 @@ While a job is queued or running, the primary action changes to `Stop`:
 - the same mechanism cancels first-time model downloads at a safe file
   boundary.
 
+GPU work is guarded process-wide, not only by one browser queue. Explore,
+refine, and replay calls from different sessions wait for the same accelerator
+slot, while a duplicate request from one session is rejected until its current
+backend callback has fully unwound. If CUDA/MPS reports out-of-memory, the
+failed runtime is evicted, temporary accelerator memory is released, and the
+next request constructs a clean runtime instead of reusing a poisoned
+pipeline.
+
 The UI reports phase and honest timing:
 
 - waiting in queue;
@@ -126,6 +184,12 @@ The UI reports phase and honest timing:
 Elapsed time and an estimate are labeled separately. A value such as
 `42.3 / 107.6 s` must be explained as elapsed/estimated, never implied to be a
 hard timeout.
+
+Temporary Gradio share links may return an HTML error page after the remote
+process restarts. A client-side JSON parse failure in that situation must not
+be presented as model failure or collapse the whole Studio into error badges.
+The page shows a localized session-ended layer with reload/latest-link
+guidance; a refreshed deployment remains the source of truth.
 
 ## Canonical first-run experience
 
@@ -158,6 +222,35 @@ layer instead:
 Only genuine failures after the user starts setup should use error styling, and
 those errors must remain localized to the layer rather than replacing the
 entire Studio surface.
+
+## Session recovery
+
+A stale browser page can outlive a restarted local server or temporary Gradio
+share tunnel. In that case the old frontend may receive an HTML reconnect/404
+page where it expected a JSON event response and report `Unexpected token '<'`.
+Treat this as an expired session, not a generation failure:
+
+- keep the last rendered images and controls intact;
+- do not replace every component with an error badge;
+- show one recovery layer with **Reload this address** and **Keep this screen**;
+- after a reload of the same live server, restore language, prompt, selected
+  model, and non-sensitive controls from browser/session state;
+- clearly state when an in-flight server job cannot be recovered.
+
+The browser regression suite includes a server restart while an old page
+remains open, followed by a primary-action click.
+
+v0.3.0 uses Gradio `BrowserState` for a stable, non-sensitive browser session
+identifier. Refreshing the same running server can therefore rediscover and
+stop the active job, and the newest retained result can be restored after the
+backend finishes. A process restart cannot recover GPU memory or an in-flight
+Python call that no longer exists; the reconnect layer explains that boundary.
+
+This is session recovery, not a user-account system. The local Studio does not
+store email addresses, passwords, OAuth tokens, or cross-device projects.
+Persistent multi-user accounts would require an explicit authentication,
+authorization, retention, and storage design and remain outside the packaged
+local MVP.
 
 ## Model registry and download policy
 

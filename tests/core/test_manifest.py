@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -125,6 +126,48 @@ def test_unsafe_relative_artifact_path_is_rejected(tmp_path: Path) -> None:
 def test_secret_looking_prompt_is_not_exported(tmp_path: Path) -> None:
     secret = "sk_" + "abcdefghijklmnopqrst"
     _, study = build_study(f"use token={secret} in the scene")
+    with pytest.raises(ValidationError, match="credential"):
+        study.export(tmp_path / "run")
+
+
+def test_export_records_original_and_normalized_model_prompt(tmp_path: Path) -> None:
+    image = Image.new("RGB", (160, 120), "white")
+    studio = Studio(FakeBackend())
+    study = studio.explore(
+        studio.prepare(image, max_side=128),
+        intent=Intent(
+            "귀여운 종이 왕국",
+            model_prompt="A cute paper kingdom.",
+            prompt_metadata={
+                "detected_language": "ko",
+                "status": "translated",
+                "translator": {
+                    "provider": "test-double",
+                    "model_id": "example/ko-en",
+                    "revision": "a" * 40,
+                    "local_files_only": True,
+                },
+            },
+        ),
+        outputs=1,
+    )
+
+    manifest = json.loads(
+        study.export(tmp_path / "translated").read_text(encoding="utf-8")
+    )
+
+    assert manifest["recipe"]["prompt"] == "귀여운 종이 왕국"
+    assert manifest["recipe"]["model_prompt"] == "A cute paper kingdom."
+    assert manifest["recipe"]["prompt_metadata"]["status"] == "translated"
+
+
+def test_secret_looking_model_prompt_is_not_exported(tmp_path: Path) -> None:
+    _, study = build_study()
+    study.recipe = replace(
+        study.recipe,
+        model_prompt="Render using token=sk_" + "a" * 24,
+    )
+
     with pytest.raises(ValidationError, match="credential"):
         study.export(tmp_path / "run")
 

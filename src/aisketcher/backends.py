@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gc
 import importlib
+import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -104,6 +105,14 @@ class FakeBackend:
         return results
 
 
+class DiffusersGenerationCancelled(GenerationError):
+    """Raised when a cooperative cancellation stops SDXL denoising."""
+
+
+class _DiffusersCancelSignal(Exception):
+    """Internal control-flow exception raised from a Diffusers step callback."""
+
+
 @dataclass(slots=True)
 class _DiffusersRuntime:
     torch: Any
@@ -152,6 +161,7 @@ class DiffusersBackend:
         self._loaded_preset: str | None = None
         self._runtime: _DiffusersRuntime | None = None
         self._resolved_device: str | None = None
+        self._cancel_event = threading.Event()
 
     @property
     def capabilities(self) -> BackendCapabilities:
@@ -517,6 +527,57 @@ class DiffusersBackend:
         generator_device = "cpu" if device == "mps" else device
         return runtime.torch.Generator(device=generator_device).manual_seed(seed)
 
+    def request_cancel(self) -> None:
+        """Cooperatively stop the active or next queued generation."""
+
+        self._cancel_event.set()
+        for pipeline in (self._pipeline, self._variation_pipeline):
+            if pipeline is not None:
+                with suppress(AttributeError):
+                    pipeline._interrupt = True
+
+    def cancel(self) -> None:
+        """Generic cancellation alias used by the Studio controller."""
+
+        self.request_cancel()
+
+    def _raise_if_cancelled(self) -> None:
+        if self._cancel_event.is_set():
+            raise DiffusersGenerationCancelled("Diffusers generation was cancelled")
+
+    def _step_callback(
+        self,
+        runtime: _DiffusersRuntime,
+        *,
+        offload_mps_vae: bool,
+    ) -> Any:
+        offload = (
+            self._offload_mps_vae_callback(runtime)
+            if offload_mps_vae
+            else None
+        )
+
+        def callback(
+            pipeline: Any,
+            step_index: int,
+            timestep: Any,
+            callback_kwargs: dict[str, Any],
+        ) -> dict[str, Any]:
+            if offload is not None:
+                callback_kwargs = offload(
+                    pipeline,
+                    step_index,
+                    timestep,
+                    callback_kwargs,
+                )
+            if self._cancel_event.is_set():
+                with suppress(AttributeError):
+                    pipeline._interrupt = True
+                raise _DiffusersCancelSignal
+            return callback_kwargs
+
+        return callback
+
     def _generate_one(
         self,
         *,
@@ -532,7 +593,7 @@ class DiffusersBackend:
         generator = self._generator(runtime, device, seed)
         stable_mps_decode = device == "mps" and self._supports_explicit_vae_decode(pipeline)
         kwargs: dict[str, Any] = {
-            "prompt": request.recipe.prompt,
+            "prompt": request.recipe.generation_prompt,
             "negative_prompt": request.recipe.negative_prompt or None,
             "num_inference_steps": request.recipe.steps,
             "guidance_scale": request.recipe.guidance_scale,
@@ -540,6 +601,10 @@ class DiffusersBackend:
             "generator": generator,
             "width": request.recipe.width,
             "height": request.recipe.height,
+            "callback_on_step_end": self._step_callback(
+                runtime,
+                offload_mps_vae=stable_mps_decode,
+            ),
         }
         if request.init_image is None:
             kwargs["image"] = control
@@ -569,12 +634,12 @@ class DiffusersBackend:
             if request.init_image is None:
                 self._stabilize_mps_vae(pipeline, runtime)
             kwargs["output_type"] = "latent"
-            kwargs["callback_on_step_end"] = self._offload_mps_vae_callback(runtime)
             kwargs["callback_on_step_end_tensor_inputs"] = ["latents"]
 
         output: Any | None = None
         output_images: Any | None = None
         try:
+            self._raise_if_cancelled()
             output = pipeline(**kwargs)
             output_images = getattr(output, "images", None)
             if output_images is None or (
@@ -594,7 +659,13 @@ class DiffusersBackend:
                 seed=seed,
             )
             return image, stable_mps_decode
+        except _DiffusersCancelSignal as exc:
+            raise DiffusersGenerationCancelled(
+                "Diffusers generation was cancelled"
+            ) from exc
         finally:
+            with suppress(AttributeError):
+                pipeline._interrupt = False
             # Diffusers outputs retain the full device tensor batch. Clear both
             # aliases before asking MPS to reclaim cached allocations.
             output_images = None
@@ -604,6 +675,17 @@ class DiffusersBackend:
                 self._cleanup_mps(runtime)
 
     def generate(self, request: GenerationRequest) -> list[GenerationResult]:
+        try:
+            return self._generate(request)
+        finally:
+            self._cancel_event.clear()
+            for pipeline in (self._pipeline, self._variation_pipeline):
+                if pipeline is not None:
+                    with suppress(AttributeError):
+                        pipeline._interrupt = False
+
+    def _generate(self, request: GenerationRequest) -> list[GenerationResult]:
+        self._raise_if_cancelled()
         if self._loaded_preset not in (None, request.recipe.preset):
             self._pipeline = None
             self._variation_pipeline = None
@@ -618,6 +700,7 @@ class DiffusersBackend:
             # pipeline resident. Never carry that MPS state into another seed.
             self._reset_mps_pipelines(runtime)
         self._load_pipelines(request)
+        self._raise_if_cancelled()
         pipeline = self._variation_pipeline if request.init_image is not None else self._pipeline
         if pipeline is None:
             raise ModelUnavailableError("No compatible Diffusers pipeline is configured")
@@ -629,6 +712,7 @@ class DiffusersBackend:
         # Sequential generation is deliberate: it gives every output its own
         # generator and is the memory-safe path on Apple Silicon.
         for seed_index, seed in enumerate(request.seeds):
+            self._raise_if_cancelled()
             if device == "mps":
                 self._cleanup_mps(runtime)
             retry_reason: str | None = None
@@ -728,5 +812,44 @@ class DiffusersBackend:
         self._loaded_preset = request.recipe.preset
         return results
 
+    def close(self) -> None:
+        """Release pipelines and reclaim accelerator caches after cancel/OOM."""
 
-__all__ = ["Backend", "DiffusersBackend", "FakeBackend"]
+        self.request_cancel()
+        runtime = self._runtime
+        pipelines = (self._pipeline, self._variation_pipeline)
+        self._pipeline = None
+        self._variation_pipeline = None
+        seen: set[int] = set()
+        if not self._pipeline_was_injected:
+            for pipeline in pipelines:
+                if pipeline is None or id(pipeline) in seen:
+                    continue
+                seen.add(id(pipeline))
+                with suppress(AttributeError, RuntimeError):
+                    pipeline.maybe_free_model_hooks()
+                with suppress(AttributeError, RuntimeError):
+                    pipeline.to("cpu")
+        if runtime is not None:
+            device = self._resolved_device
+            if device == "mps":
+                self._cleanup_mps(runtime)
+            elif device == "cuda":
+                cuda = getattr(runtime.torch, "cuda", None)
+                if cuda is not None:
+                    with suppress(AttributeError, RuntimeError):
+                        cuda.synchronize()
+                    with suppress(AttributeError, RuntimeError):
+                        cuda.empty_cache()
+                gc.collect()
+        self._loaded_preset = None
+        self._mps_pipeline_consumed = False
+        self._resolved_device = None
+
+
+__all__ = [
+    "Backend",
+    "DiffusersBackend",
+    "DiffusersGenerationCancelled",
+    "FakeBackend",
+]

@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .errors import ModelUnavailableError, OptionalDependencyError, ValidationError
 from .models import (
@@ -36,6 +39,16 @@ SDXL_CANNY_LITE = ModelReference(
     revision="edd85f64c5f87dfb6d73762949d9daca16389518",
     role="controlnet",
 )
+FLUX2_KLEIN_BASE = ModelReference(
+    repo_id="black-forest-labs/FLUX.2-klein-4B",
+    revision="e7b7dc27f91deacad38e78976d1f2b499d76a294",
+    role="base-edit",
+)
+FLUX2_SMALL_DECODER = ModelReference(
+    repo_id="black-forest-labs/FLUX.2-small-decoder",
+    revision="a3efc24f613ef42d9428af62fdbd6f5fd8856c4a",
+    role="decoder",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +63,8 @@ class PresetDefinition:
     guidance_scale: float = 5.0
     scheduler: str = "unipc"
     negative_prompt: str = ""
+    required_control: str = "canny"
+    max_dimension: int | None = None
 
 
 PRESETS: dict[str, PresetDefinition] = {
@@ -65,9 +80,24 @@ PRESETS: dict[str, PresetDefinition] = {
         models=(SDXL_BASE, SDXL_CANNY_QUALITY),
         estimated_bytes=9_443_327_981,
     ),
+    "flux2-klein-edit@1": PresetDefinition(
+        name="flux2-klein-edit@1",
+        label="FLUX.2 Klein Edit",
+        models=(FLUX2_KLEIN_BASE, FLUX2_SMALL_DECODER),
+        estimated_bytes=16_225_156_608,
+        steps=4,
+        guidance_scale=1.0,
+        scheduler="flow-match-euler",
+        negative_prompt="",
+        required_control="reference-image",
+        max_dimension=1024,
+    ),
 }
 
 _ALIASES = {
+    "auto": "flux2-klein-edit@1",
+    "flux": "flux2-klein-edit@1",
+    "flux2": "flux2-klein-edit@1",
     "lite": "sdxl-canny-lite@1",
     "quality": "sdxl-canny@1",
     "sdxl-canny-quality@1": "sdxl-canny@1",
@@ -97,10 +127,29 @@ _CONTROLNET_ALLOW_PATTERNS = (
     "config.json",
     "diffusion_pytorch_model.fp16.safetensors",
 )
+_FLUX2_BASE_ALLOW_PATTERNS = (
+    "model_index.json",
+    "scheduler/scheduler_config.json",
+    "text_encoder/config.json",
+    "text_encoder/model.safetensors.index.json",
+    "text_encoder/model-00001-of-00002.safetensors",
+    "text_encoder/model-00002-of-00002.safetensors",
+    "tokenizer/*",
+    "transformer/config.json",
+    "transformer/diffusion_pytorch_model.safetensors",
+    "vae/config.json",
+    "vae/diffusion_pytorch_model.safetensors",
+)
+_FLUX2_DECODER_ALLOW_PATTERNS = (
+    "config.json",
+    "diffusion_pytorch_model.safetensors",
+)
 _MODEL_BYTES = {
     (SDXL_BASE.repo_id, SDXL_BASE.revision): 6_941_187_536,
     (SDXL_CANNY_LITE.repo_id, SDXL_CANNY_LITE.revision): 320_238_438,
     (SDXL_CANNY_QUALITY.repo_id, SDXL_CANNY_QUALITY.revision): 2_502_140_445,
+    (FLUX2_KLEIN_BASE.repo_id, FLUX2_KLEIN_BASE.revision): 15_975_635_268,
+    (FLUX2_SMALL_DECODER.repo_id, FLUX2_SMALL_DECODER.revision): 249_521_340,
 }
 
 
@@ -109,7 +158,33 @@ def _allow_patterns(model: ModelReference) -> tuple[str, ...]:
         return _BASE_ALLOW_PATTERNS
     if model.role == "controlnet":
         return _CONTROLNET_ALLOW_PATTERNS
+    if model.role == "base-edit":
+        return _FLUX2_BASE_ALLOW_PATTERNS
+    if model.role == "decoder":
+        return _FLUX2_DECODER_ALLOW_PATTERNS
     raise ValidationError(f"No safe download policy exists for model role {model.role!r}")
+
+
+def _download_policy(model: ModelReference) -> str:
+    if model.role in {"base", "controlnet"}:
+        return "fp16-components-v1"
+    if model.role in {"base-edit", "decoder"}:
+        return "safetensors-components-v1"
+    raise ValidationError(f"No safe download policy exists for model role {model.role!r}")
+
+
+def _download_pattern_groups(
+    allow_patterns: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
+    """Split a curated allowlist into deterministic cancellation boundaries.
+
+    Each exact path or glob remains a separate ``snapshot_download`` request.
+    Hugging Face reuses files already present in ``local_dir``, while
+    AIsketcher gets a safe point to observe cancellation after every curated
+    component group.
+    """
+
+    return tuple((pattern,) for pattern in allow_patterns)
 
 
 def get_preset(name: str) -> PresetDefinition:
@@ -143,14 +218,36 @@ def resolve_recipe(
     )
     issues: list[CapabilityIssue] = []
 
-    if "canny" not in capabilities.controls:
+    if preset.required_control not in capabilities.controls:
+        control_label = (
+            "Canny"
+            if preset.required_control == "canny"
+            else preset.required_control.replace("-", " ")
+        )
         issues.append(
             CapabilityIssue(
                 setting="control",
-                requested="canny",
+                requested=preset.required_control,
                 applied=None,
                 severity=CapabilitySeverity.ERROR,
-                message="This preset requires a Canny-capable backend.",
+                message=(
+                    f"This preset requires a {control_label}-capable backend."
+                ),
+            )
+        )
+    if preset.max_dimension is not None and (
+        width > preset.max_dimension or height > preset.max_dimension
+    ):
+        issues.append(
+            CapabilityIssue(
+                setting="dimensions",
+                requested=f"{width}x{height}",
+                applied=None,
+                severity=CapabilitySeverity.ERROR,
+                message=(
+                    f"This preset supports dimensions up to "
+                    f"{preset.max_dimension}x{preset.max_dimension}."
+                ),
             )
         )
     if scheduler not in capabilities.schedulers:
@@ -188,6 +285,8 @@ def resolve_recipe(
     return ResolvedRecipe(
         preset=preset.name,
         prompt=intent.prompt,
+        model_prompt=intent.model_prompt,
+        prompt_metadata=intent.prompt_metadata,
         profile=intent.profile,
         structure=StructureMode(intent.structure),
         width=width,
@@ -282,6 +381,14 @@ class PresetManager:
         safe_repo = model.repo_id.replace("/", "--")
         return self.cache_dir / "models" / f"{safe_repo}@{model.revision}"
 
+    def model_destination(self, model: ModelReference) -> Path:
+        """Return the managed local directory without implying it is installed."""
+
+        if not isinstance(model, ModelReference):
+            raise TypeError("model must be a ModelReference")
+        _allow_patterns(model)
+        return self._destination(model)
+
     @staticmethod
     def _required_files_present(
         destination: Path, allow_patterns: tuple[str, ...]
@@ -317,7 +424,7 @@ class PresetManager:
         if (
             payload.get("repo_id") != model.repo_id
             or payload.get("revision") != model.revision
-            or payload.get("download_policy") != "fp16-components-v1"
+            or payload.get("download_policy") != _download_policy(model)
             or payload.get("safe_tensors_only") is not True
             or payload.get("allow_patterns") != list(_allow_patterns(model))
         ):
@@ -358,7 +465,51 @@ class PresetManager:
             )
         return plan
 
-    def install(self, preset_name: str, *, confirm: bool = False) -> InstallResult:
+    @staticmethod
+    def _install_cancelled(
+        *,
+        cancellation_token: Any = None,
+        cancel_event: Any = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> bool:
+        for candidate in (cancellation_token, cancel_event):
+            is_set = getattr(candidate, "is_set", None)
+            if callable(is_set) and bool(is_set()):
+                return True
+        return bool(should_cancel is not None and should_cancel())
+
+    @classmethod
+    def _raise_if_install_cancelled(
+        cls,
+        *,
+        cancellation_token: Any = None,
+        cancel_event: Any = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> None:
+        if cls._install_cancelled(
+            cancellation_token=cancellation_token,
+            cancel_event=cancel_event,
+            should_cancel=should_cancel,
+        ):
+            raise ModelUnavailableError(
+                "Model installation was cancelled safely at a file boundary."
+            )
+
+    @staticmethod
+    def _remove_incomplete_destination(destination: Path) -> None:
+        marker = destination / ".aisketcher-model.json"
+        if destination.exists() and not marker.is_file():
+            shutil.rmtree(destination, ignore_errors=True)
+
+    def install(
+        self,
+        preset_name: str,
+        *,
+        confirm: bool = False,
+        cancellation_token: Any = None,
+        cancel_event: Any = None,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> InstallResult:
         plan = self.plan_install(preset_name)
         if not confirm:
             raise ValidationError(
@@ -376,43 +527,77 @@ class PresetManager:
         downloaded: list[str] = []
         paths: list[Path] = []
         for item in plan.items:
+            self._raise_if_install_cancelled(
+                cancellation_token=cancellation_token,
+                cancel_event=cancel_event,
+                should_cancel=should_cancel,
+            )
             item.destination.mkdir(parents=True, exist_ok=True)
             if not item.installed:
-                snapshot_download(
-                    repo_id=item.repo_id,
-                    revision=item.revision,
-                    local_dir=item.destination,
-                    allow_patterns=list(item.allow_patterns),
-                    ignore_patterns=[
-                        "*.bin",
-                        "*.ckpt",
-                        "*.pt",
-                        "*.pth",
-                        "*.pkl",
-                        "*.pickle",
-                        "*.py",
-                    ],
-                )
-                if not self._required_files_present(
-                    item.destination, item.allow_patterns
-                ):
-                    raise ModelUnavailableError(
-                        f"Downloaded snapshot for {item.repo_id!r} is incomplete or unsafe"
+                try:
+                    for allow_pattern_group in _download_pattern_groups(
+                        item.allow_patterns
+                    ):
+                        self._raise_if_install_cancelled(
+                            cancellation_token=cancellation_token,
+                            cancel_event=cancel_event,
+                            should_cancel=should_cancel,
+                        )
+                        snapshot_download(
+                            repo_id=item.repo_id,
+                            revision=item.revision,
+                            local_dir=item.destination,
+                            allow_patterns=list(allow_pattern_group),
+                            ignore_patterns=[
+                                "*.bin",
+                                "*.ckpt",
+                                "*.pt",
+                                "*.pth",
+                                "*.pkl",
+                                "*.pickle",
+                                "*.py",
+                            ],
+                        )
+                        self._raise_if_install_cancelled(
+                            cancellation_token=cancellation_token,
+                            cancel_event=cancel_event,
+                            should_cancel=should_cancel,
+                        )
+                    if not self._required_files_present(
+                        item.destination, item.allow_patterns
+                    ):
+                        raise ModelUnavailableError(
+                            f"Downloaded snapshot for {item.repo_id!r} is incomplete or unsafe"
+                        )
+                    marker = {
+                        "repo_id": item.repo_id,
+                        "revision": item.revision,
+                        "role": item.role,
+                        "download_policy": _download_policy(
+                            ModelReference(
+                                repo_id=item.repo_id,
+                                revision=item.revision,
+                                role=item.role,
+                            )
+                        ),
+                        "allow_patterns": list(item.allow_patterns),
+                        "safe_tensors_only": True,
+                        "trust_remote_code": False,
+                    }
+                    (item.destination / ".aisketcher-model.json").write_text(
+                        json.dumps(marker, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
                     )
-                marker = {
-                    "repo_id": item.repo_id,
-                    "revision": item.revision,
-                    "role": item.role,
-                    "download_policy": "fp16-components-v1",
-                    "allow_patterns": list(item.allow_patterns),
-                    "safe_tensors_only": True,
-                    "trust_remote_code": False,
-                }
-                (item.destination / ".aisketcher-model.json").write_text(
-                    json.dumps(marker, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-                )
+                except Exception:
+                    self._remove_incomplete_destination(item.destination)
+                    raise
                 downloaded.append(item.repo_id)
             paths.append(item.destination)
+        self._raise_if_install_cancelled(
+            cancellation_token=cancellation_token,
+            cancel_event=cancel_event,
+            should_cancel=should_cancel,
+        )
         return InstallResult(
             preset=plan.preset,
             paths=tuple(paths),
@@ -421,6 +606,8 @@ class PresetManager:
 
 
 __all__ = [
+    "FLUX2_KLEIN_BASE",
+    "FLUX2_SMALL_DECODER",
     "InstallItem",
     "InstallPlan",
     "InstallResult",

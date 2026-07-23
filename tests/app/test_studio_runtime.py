@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import stat
+import threading
+import time
 import zipfile
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -12,6 +16,10 @@ import pytest
 from PIL import Image
 
 from aisketcher.manifest import canonical_sha256
+from aisketcher.prompt_normalization import (
+    MarianKoreanEnglishTranslator,
+    TranslatorMetadata,
+)
 from aisketcher.studio_app.i18n import navigation_choices, structure_choices, text
 from aisketcher.studio_app.runtime import (
     MAX_REPLAY_FILES,
@@ -20,6 +28,7 @@ from aisketcher.studio_app.runtime import (
     GuidedSampleCatalog,
     RunRegistry,
     StudioAppError,
+    StudioJobCancelled,
     _seed_plan,
     prepare_replay_input,
     sanitize_upload,
@@ -57,6 +66,7 @@ class FakeCandidate:
     seed: int
     technical_badge: str
     reason: str
+    recipe: Any = None
 
 
 class FakeStudy:
@@ -131,6 +141,8 @@ class FakeStudio:
         outputs: int,
         strength: str,
         locks: tuple[str, ...],
+        additional_instruction: str = "",
+        refinement_prompt: str = "",
     ) -> FakeStudy:
         self.vary_calls.append(
             {
@@ -138,9 +150,77 @@ class FakeStudio:
                 "outputs": outputs,
                 "strength": strength,
                 "locks": locks,
+                "additional_instruction": additional_instruction,
+                "refinement_prompt": refinement_prompt,
             }
         )
         return FakeStudy(self._candidates(outputs, offset=100))
+
+
+@dataclass(frozen=True)
+class PromptRecipeStub:
+    prompt: str
+    model_prompt: str | None
+    prompt_metadata: dict[str, Any]
+
+
+class RecordingTranslator:
+    def __init__(self, translations: dict[str, str]) -> None:
+        self.translations = translations
+        self.calls: list[str] = []
+
+    @property
+    def metadata(self) -> TranslatorMetadata:
+        return TranslatorMetadata(
+            provider="test-double",
+            model_id="example/ko-en",
+            revision="test-revision",
+            local_files_only=True,
+        )
+
+    def translate(self, value: str) -> str:
+        self.calls.append(value)
+        return self.translations.get(value, "")
+
+
+class PromptAwareStudio(FakeStudio):
+    def explore(
+        self,
+        prepared: str,
+        *,
+        intent: Any,
+        outputs: int,
+        seed_plan: Any,
+        recipe: Any,
+        overrides: dict[str, Any],
+    ) -> FakeStudy:
+        self.explore_calls.append(
+            {
+                "prepared": prepared,
+                "intent": intent,
+                "outputs": outputs,
+                "seed_plan": seed_plan,
+                "recipe": recipe,
+                "overrides": overrides,
+            }
+        )
+        resolved = PromptRecipeStub(
+            prompt=intent.prompt,
+            model_prompt=intent.model_prompt,
+            prompt_metadata=dict(intent.prompt_metadata),
+        )
+        return FakeStudy(
+            [
+                FakeCandidate(
+                    image=candidate.image,
+                    seed=candidate.seed,
+                    technical_badge=candidate.technical_badge,
+                    reason=candidate.reason,
+                    recipe=resolved,
+                )
+                for candidate in self._candidates(outputs)
+            ]
+        )
 
 
 def _source(path: Path, *, size: tuple[int, int] = (64, 48)) -> Path:
@@ -237,10 +317,17 @@ def test_bundled_guided_sample_is_hash_verified_and_ready() -> None:
     assert catalog.available is True
     sample = catalog.load()
     assert len(sample.candidates) == 4
-    assert sample.selected_index == 3
-    assert sample.candidates[3].seed == 1197419234
-    assert sample.candidates[3].label == "closest structure"
-    assert sample.prompt
+    assert sample.selected_index == 0
+    assert sample.candidates[0].seed == 6764547109648557242
+    assert sample.candidates[0].label == "cleanest edges"
+    assert sample.prompt == (
+        "An elaborate miniature fantasy country built in the sketch's tall "
+        "letter A silhouette, populated by delightful tiny mascots. Painted "
+        "metal towers, enamel creatures, glowing glass windows, layered "
+        "architectural depth, vivid cyan, cobalt, vermilion, yellow and gold, "
+        "crisp handcrafted details, dramatic studio lighting, premium concept "
+        "maquette photograph."
+    )
     assert sample.profile == "graphic_design"
     assert sample.structure == "balanced"
 
@@ -318,20 +405,20 @@ def test_active_guided_run_localizes_display_without_mutating_manifest_labels(
     assert localized is not None
     assert localized.state["language"] == "ko"
     assert [label for _, label in localized.gallery] == [
-        "가장 차별화됨",
-        "방향 2",
-        "방향 3",
+        "가장 깔끔한 윤곽",
         "구조 유사도 최고",
+        "방향 3",
+        "방향 4",
     ]
     assert "가이드 샘플을 열었습니다" in localized.status
     assert "Guided Sample loaded" not in localized.status
-    assert "이 방향의 기술적 특징: 구조 유사도 최고 · 시드 1197419234" in (
+    assert "이 방향의 기술적 특징: 가장 깔끔한 윤곽 · 시드 6764547109648557242" in (
         localized.recommendation
     )
     assert "Why this direction" not in localized.recommendation
     record = controller.registry.get(str(opened.state["run_id"]), str(opened.state["session_id"]))
-    assert record.candidates[0].label == "most distinct"
-    assert record.candidates[3].label == "closest structure"
+    assert record.candidates[0].label == "cleanest edges"
+    assert record.candidates[1].label == "closest structure"
 
 
 def test_guided_sample_reads_canonical_manifest_without_relabeling_external_art(
@@ -708,9 +795,7 @@ def test_successful_replay_bundle_is_owned_by_the_run_workspace(tmp_path: Path) 
         workspace_root=tmp_path / "work",
     )
 
-    response = controller.replay_manifest(
-        controller.initial_state(), bundle, "sdxl-canny-lite@1"
-    )
+    response = controller.replay_manifest(controller.initial_state(), bundle, "sdxl-canny-lite@1")
     record = controller.registry.get(
         str(response.state["run_id"]), str(response.state["session_id"])
     )
@@ -744,15 +829,189 @@ def test_fake_studio_explore_select_refine_and_export(tmp_path: Path) -> None:
         response.state, 2
     )
     assert selected_state["selected_index"] == 2
+    selected_record = controller.registry.get(
+        str(response.state["run_id"]),
+        str(response.state["session_id"]),
+    )
+    assert selected_record.study.picked == 2
     assert Path(selected_path).is_file()
     assert "Direction 3" in recommendation
 
-    refined = controller.refine(selected_state, "subtle", ("structure",))
+    refined = controller.refine(
+        selected_state,
+        "subtle",
+        ("structure",),
+        "Use warmer paper and fewer decorative details.",
+    )
     assert len(refined.gallery) == 4
     assert studio.vary_calls[0]["locks"] == ("structure",)
+    assert (
+        studio.vary_calls[0]["additional_instruction"]
+        == "Use warmer paper and fewer decorative details."
+    )
     archive_path, _ = controller.export(refined.state)
     with zipfile.ZipFile(archive_path) as archive:
         assert "manifest.json" in archive.namelist()
+        manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["refinement"] == {
+        "additional_instruction": "Use warmer paper and fewer decorative details.",
+        "automatic": False,
+        "original_brief": "Layered paper shapes in navy, coral, and gold",
+        "parent_run_id": response.state["run_id"],
+    }
+
+
+def test_korean_explore_and_refine_preserve_original_and_model_prompts(
+    tmp_path: Path,
+) -> None:
+    original_brief = "귀여운 종이 왕국"
+    original_instruction = "따뜻한 색감과 단순한 장식을 사용해 주세요."
+    model_brief = "A cute paper kingdom."
+    model_instruction = "Use warm colors and simple decorations."
+    translator = RecordingTranslator(
+        {
+            original_brief: model_brief,
+            original_instruction: model_instruction,
+        }
+    )
+    studio = PromptAwareStudio("sdxl-canny-lite@1")
+    controller = AppController(
+        studio_factory=lambda preset: studio,
+        prompt_translator=translator,
+        workspace_root=tmp_path / "work",
+    )
+    state = controller.initial_state("ko")
+
+    explored = controller.explore(
+        state,
+        _source(tmp_path / "source.jpg"),
+        original_brief,
+        "graphic_design",
+        "balanced",
+        "sdxl-canny-lite@1",
+        4,
+        "scout",
+        "",
+        True,
+        30,
+        5.0,
+        ("structure",),
+    )
+
+    intent = studio.explore_calls[0]["intent"]
+    assert intent.prompt == original_brief
+    assert intent.model_prompt == model_brief
+    assert intent.prompt_metadata == {
+        "normalization": {
+            "detected_language": "ko",
+            "status": "translated",
+            "translator": {
+                "provider": "test-double",
+                "model_id": "example/ko-en",
+                "revision": "test-revision",
+                "local_files_only": True,
+            },
+            "enhancement_applied": False,
+        }
+    }
+    explored_record = controller.registry.get(
+        str(explored.state["run_id"]),
+        str(explored.state["session_id"]),
+    )
+    assert explored_record.request["brief"] == original_brief
+    assert explored_record.request["model_prompt"] == model_brief
+
+    refined = controller.refine(
+        explored.state,
+        "subtle",
+        ("structure",),
+        original_instruction,
+    )
+
+    selected_recipe = studio.vary_calls[0]["selected"].recipe
+    assert selected_recipe.prompt == (
+        f"{original_brief}\n\n추가 발전 지시: {original_instruction}"
+    )
+    assert selected_recipe.model_prompt == (
+        f"{model_brief}\n\nRefinement instruction: {model_instruction}"
+    )
+    assert studio.vary_calls[0]["additional_instruction"] == model_instruction
+    assert studio.vary_calls[0]["refinement_prompt"] == selected_recipe.model_prompt
+    refinement = selected_recipe.prompt_metadata["refinements"][0]
+    assert refinement == {
+        "original_instruction": original_instruction,
+        "model_instruction": model_instruction,
+        "automatic": False,
+        "normalization": {
+            "detected_language": "ko",
+            "status": "translated",
+            "translator": {
+                "provider": "test-double",
+                "model_id": "example/ko-en",
+                "revision": "test-revision",
+                "local_files_only": True,
+            },
+            "enhancement_applied": False,
+        },
+    }
+    refined_record = controller.registry.get(
+        str(refined.state["run_id"]),
+        str(refined.state["session_id"]),
+    )
+    assert refined_record.request["refinement_instruction"] == original_instruction
+    assert refined_record.request["refinement_model_instruction"] == model_instruction
+    assert translator.calls == [original_brief, original_instruction]
+
+
+def test_korean_translation_failure_is_friendly_and_starts_no_model_work(
+    tmp_path: Path,
+) -> None:
+    translator = RecordingTranslator({"한국어 브리프": ""})
+    created: list[FakeStudio] = []
+
+    def factory(preset: str) -> FakeStudio:
+        studio = FakeStudio(preset)
+        created.append(studio)
+        return studio
+
+    controller = AppController(
+        studio_factory=factory,
+        prompt_translator=translator,
+        workspace_root=tmp_path / "work",
+    )
+
+    with pytest.raises(
+        StudioAppError,
+        match="원문은 보존되었고 이미지 모델로 전송되지 않았습니다",
+    ):
+        controller.explore(
+            controller.initial_state("ko"),
+            _source(tmp_path / "source.jpg"),
+            "한국어 브리프",
+            "graphic_design",
+            "balanced",
+            "sdxl-canny-lite@1",
+            4,
+            "scout",
+            "",
+            True,
+            30,
+            5.0,
+            ("structure",),
+        )
+
+    assert created == []
+    assert not list((tmp_path / "work").rglob("source-*.png"))
+
+
+def test_default_prompt_translator_is_lazy_and_cache_only(tmp_path: Path) -> None:
+    controller = AppController(
+        studio_factory=FakeStudio,
+        workspace_root=tmp_path / "work",
+    )
+
+    assert isinstance(controller.prompt_translator, MarianKoreanEnglishTranslator)
+    assert controller.prompt_translator.metadata.local_files_only is True
 
 
 def test_failed_generation_removes_the_new_run_workspace(tmp_path: Path) -> None:
@@ -773,6 +1032,261 @@ def test_failed_generation_removes_the_new_run_workspace(tmp_path: Path) -> None
     assert not [path for path in root.rglob("*") if path.is_file()]
 
 
+def test_process_generation_guard_serializes_controllers(tmp_path: Path) -> None:
+    active = 0
+    maximum_active = 0
+    activity_lock = threading.Lock()
+
+    class MeasuringStudio(FakeStudio):
+        def explore(self, *args: Any, **kwargs: Any) -> FakeStudy:
+            nonlocal active, maximum_active
+            with activity_lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            try:
+                time.sleep(0.05)
+                return super().explore(
+                    *args,
+                    **{
+                        key: value
+                        for key, value in kwargs.items()
+                        if key
+                        in {
+                            "intent",
+                            "outputs",
+                            "seed_plan",
+                            "recipe",
+                            "overrides",
+                        }
+                    },
+                )
+            finally:
+                with activity_lock:
+                    active -= 1
+
+    source = _source(tmp_path / "source.jpg")
+    first = AppController(
+        studio_factory=MeasuringStudio,
+        workspace_root=tmp_path / "first",
+    )
+    second = AppController(
+        studio_factory=MeasuringStudio,
+        workspace_root=tmp_path / "second",
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(_explore, controller, source) for controller in (first, second)]
+        responses = [future.result(timeout=5) for future in futures]
+
+    assert maximum_active == 1
+    assert all(len(response.gallery) == 4 for response in responses)
+
+
+def test_duplicate_generation_in_one_session_is_rejected(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingStudio(FakeStudio):
+        def explore(self, *args: Any, **kwargs: Any) -> FakeStudy:
+            entered.set()
+            assert release.wait(timeout=5)
+            return super().explore(
+                *args,
+                **{
+                    key: value
+                    for key, value in kwargs.items()
+                    if key
+                    in {
+                        "intent",
+                        "outputs",
+                        "seed_plan",
+                        "recipe",
+                        "overrides",
+                    }
+                },
+            )
+
+    controller = AppController(
+        studio_factory=BlockingStudio,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.jpg")
+    state = controller.initial_state("ko")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(_explore, controller, source, state)
+        assert entered.wait(timeout=5)
+        with pytest.raises(StudioAppError, match="이미 생성 작업"):
+            _explore(controller, source, state)
+        release.set()
+        assert len(first.result(timeout=5).gallery) == 4
+
+
+def test_stop_keeps_session_claimed_until_backend_unwinds(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowCancellationStudio(FakeStudio):
+        def explore(
+            self,
+            prepared: str,
+            *,
+            cancellation_token: threading.Event,
+            **kwargs: Any,
+        ) -> FakeStudy:
+            entered.set()
+            assert release.wait(timeout=5)
+            if cancellation_token.is_set():
+                raise RuntimeError("provider callback interrupted")
+            raise AssertionError("test expected cancellation")
+
+    controller = AppController(
+        studio_factory=SlowCancellationStudio,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.jpg")
+    state = controller.initial_state("ko")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(_explore, controller, source, state)
+        assert entered.wait(timeout=5)
+        controller.cancel_operation(state)
+        controller.clear_operation(state)
+        try:
+            with pytest.raises(StudioAppError, match="이미 생성 작업"):
+                _explore(controller, source, state)
+        finally:
+            release.set()
+        with pytest.raises(StudioJobCancelled):
+            first.result(timeout=5)
+
+
+def test_cuda_oom_evicts_failed_runtime_and_next_request_recovers(
+    tmp_path: Path,
+) -> None:
+    created: list[FakeStudio] = []
+
+    class OOMStudio(FakeStudio):
+        def __init__(self, preset: str, *, fail: bool) -> None:
+            super().__init__(preset)
+            self.fail = fail
+            self.closed = False
+
+        def explore(self, *args: Any, **kwargs: Any) -> FakeStudy:
+            if self.fail:
+                raise RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")
+            return super().explore(
+                *args,
+                **{
+                    key: value
+                    for key, value in kwargs.items()
+                    if key
+                    in {
+                        "intent",
+                        "outputs",
+                        "seed_plan",
+                        "recipe",
+                        "overrides",
+                    }
+                },
+            )
+
+        def close(self) -> None:
+            self.closed = True
+
+    def factory(preset: str) -> OOMStudio:
+        studio = OOMStudio(preset, fail=not created)
+        created.append(studio)
+        return studio
+
+    controller = AppController(
+        studio_factory=factory,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.jpg")
+
+    with pytest.raises(StudioAppError, match="GPU ran out of memory"):
+        _explore(controller, source)
+
+    assert created[0].closed is True
+    recovered = _explore(controller, source)
+    assert len(created) == 2
+    assert len(recovered.gallery) == 4
+
+
+def test_backend_callback_error_after_cancel_is_reported_as_cancelled(
+    tmp_path: Path,
+) -> None:
+    created: list[FakeStudio] = []
+
+    class CallbackCancelledStudio(FakeStudio):
+        def __init__(self, preset: str) -> None:
+            super().__init__(preset)
+            self.closed = False
+
+        def explore(
+            self,
+            prepared: str,
+            *,
+            cancellation_token: threading.Event,
+            **kwargs: Any,
+        ) -> FakeStudy:
+            cancellation_token.set()
+            raise RuntimeError("provider callback interrupted")
+
+        def close(self) -> None:
+            self.closed = True
+
+    def factory(preset: str) -> CallbackCancelledStudio:
+        studio = CallbackCancelledStudio(preset)
+        created.append(studio)
+        return studio
+
+    controller = AppController(
+        studio_factory=factory,
+        workspace_root=tmp_path / "work",
+    )
+
+    with pytest.raises(StudioJobCancelled, match="Stopped by user"):
+        _explore(controller, _source(tmp_path / "source.jpg"))
+
+    assert created[0].closed is True
+
+
+def test_refine_callback_error_after_cancel_is_reported_as_cancelled(
+    tmp_path: Path,
+) -> None:
+    class CallbackCancelledVariationStudio(FakeStudio):
+        def __init__(self, preset: str) -> None:
+            super().__init__(preset)
+            self.closed = False
+
+        def vary(
+            self,
+            selected: FakeCandidate,
+            *,
+            cancellation_token: threading.Event,
+            **kwargs: Any,
+        ) -> FakeStudy:
+            cancellation_token.set()
+            raise RuntimeError("provider callback interrupted")
+
+        def close(self) -> None:
+            self.closed = True
+
+    controller = AppController(
+        studio_factory=CallbackCancelledVariationStudio,
+        workspace_root=tmp_path / "work",
+    )
+    explored = _explore(controller, _source(tmp_path / "source.jpg"))
+    active = controller.pool.get("sdxl-canny-lite@1")
+
+    with pytest.raises(StudioJobCancelled, match="Stopped by user"):
+        controller.refine(explored.state, "subtle", ("structure",), "Sharper edges")
+
+    assert active.closed is True
+
+
 def test_failed_variation_removes_the_partial_destination(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -787,9 +1301,7 @@ def test_failed_variation_removes_the_partial_destination(
     def fail_materialization(study: Any, destination: Path) -> tuple[Any, ...]:
         raise RuntimeError("cannot encode candidate")
 
-    monkeypatch.setattr(
-        "aisketcher.studio_app.runtime._materialize_study", fail_materialization
-    )
+    monkeypatch.setattr("aisketcher.studio_app.runtime._materialize_study", fail_materialization)
     with pytest.raises(StudioAppError, match="Variation failed"):
         controller.refine(explored.state, "subtle", ("structure",))
 
@@ -823,13 +1335,22 @@ def test_try_again_uses_a_fresh_scout_seed_plan(
 
 def test_model_install_requires_explicit_confirmation(tmp_path: Path) -> None:
     installed: list[tuple[str, dict[str, Any]]] = []
+    translator_prepares: list[dict[str, Any]] = []
 
     def installer(preset: str, **kwargs: Any) -> None:
         installed.append((preset, kwargs))
 
+    class Translator:
+        def translate(self, value: str) -> str:
+            return value
+
+        def prepare(self, **kwargs: Any) -> None:
+            translator_prepares.append(kwargs)
+
     controller = AppController(
         studio_factory=FakeStudio,
         model_installer=installer,
+        prompt_translator=Translator(),
         workspace_root=tmp_path,
     )
 
@@ -837,16 +1358,136 @@ def test_model_install_requires_explicit_confirmation(tmp_path: Path) -> None:
         controller.install_model("sdxl-canny-lite@1", False)
 
     assert controller.install_model("sdxl-canny-lite@1", True) == "Local model is ready."
-    assert installed == [
-        (
-            "sdxl-canny-lite@1",
-            {
-                "confirm": True,
-                "trust_remote_code": False,
-                "safe_tensors_only": True,
-            },
-        )
+    assert len(installed) == 1
+    installed_preset, installed_kwargs = installed[0]
+    assert installed_preset == "sdxl-canny-lite@1"
+    assert installed_kwargs["confirm"] is True
+    assert installed_kwargs["trust_remote_code"] is False
+    assert installed_kwargs["safe_tensors_only"] is True
+    assert installed_kwargs["cancellation_token"] is installed_kwargs["cancel_event"]
+    assert callable(installed_kwargs["should_cancel"])
+    assert installed_kwargs["should_cancel"]() is False
+    assert len(translator_prepares) == 1
+    assert translator_prepares[0]["confirm"] is True
+    assert translator_prepares[0]["cancellation_token"] is translator_prepares[0][
+        "cancel_event"
     ]
+    assert callable(translator_prepares[0]["should_cancel"])
+
+
+def test_translator_prepare_failure_releases_the_session_for_retry(
+    tmp_path: Path,
+) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **kwargs: Any) -> None:
+        assert kwargs["confirm"] is True
+        installs.append(preset)
+
+    class RetryTranslator:
+        def __init__(self) -> None:
+            self.attempts = 0
+
+        def translate(self, value: str) -> str:
+            return value
+
+        def prepare(self, *, confirm: bool) -> None:
+            assert confirm is True
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("translation setup unavailable")
+
+    translator = RetryTranslator()
+    controller = AppController(
+        studio_factory=FakeStudio,
+        model_installer=installer,
+        prompt_translator=translator,
+        workspace_root=tmp_path,
+    )
+    state = controller.initial_state("ko")
+
+    with pytest.raises(StudioAppError, match="translation setup unavailable"):
+        controller.install_model("flux2-klein-edit@1", True, "ko", state)
+
+    assert controller.install_model("flux2-klein-edit@1", True, "ko", state) == (
+        "로컬 모델 준비를 마쳤습니다."
+    )
+    assert translator.attempts == 2
+    assert installs == ["flux2-klein-edit@1", "flux2-klein-edit@1"]
+
+
+def test_model_prepare_stop_targets_the_active_translator(
+    tmp_path: Path,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def installer(preset: str, **kwargs: Any) -> None:
+        assert preset == "flux2-klein-edit@1"
+        assert kwargs["should_cancel"]() is False
+
+    class CancellableTranslator:
+        def __init__(self) -> None:
+            self.cancel_called = False
+
+        def translate(self, value: str) -> str:
+            return value
+
+        def prepare(
+            self,
+            *,
+            confirm: bool,
+            cancellation_token: threading.Event,
+            should_cancel: Callable[[], bool],
+        ) -> None:
+            assert confirm is True
+            entered.set()
+            assert release.wait(timeout=5)
+            assert cancellation_token.is_set()
+            assert should_cancel() is True
+            raise RuntimeError("translator stopped at a safe boundary")
+
+        def cancel(self) -> None:
+            self.cancel_called = True
+
+    translator = CancellableTranslator()
+    controller = AppController(
+        studio_factory=FakeStudio,
+        model_installer=installer,
+        prompt_translator=translator,
+        workspace_root=tmp_path,
+    )
+    state = controller.initial_state("ko")
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            controller.install_model,
+            "flux2-klein-edit@1",
+            True,
+            "ko",
+            state,
+        )
+        assert entered.wait(timeout=5)
+        controller.cancel_operation(state)
+        release.set()
+        with pytest.raises(StudioJobCancelled):
+            future.result(timeout=5)
+
+    assert translator.cancel_called is True
+
+
+def test_cancel_operation_sets_the_session_token_and_localizes_status(
+    tmp_path: Path,
+) -> None:
+    controller = AppController(studio_factory=FakeStudio, workspace_root=tmp_path)
+    state = controller.initial_state("ko")
+    operation_event = controller.begin_operation(state)
+
+    message = controller.cancel_operation(state)
+
+    assert operation_event.is_set()
+    assert message.startswith("사용자가 작업을 중지했습니다.")
+    controller.clear_operation(state)
 
 
 def test_language_catalog_keeps_stable_values() -> None:
@@ -858,4 +1499,7 @@ def test_language_catalog_keeps_stable_values() -> None:
     assert text("ko", "canny_info").startswith("현재 SDXL")
     assert text("ko", "badge_closest_structure") == "구조 유사도 최고"
     assert text("ko", "seed_label") == "시드"
+    assert text("ko", "refine_prompt").startswith("이 방향")
+    assert text("ko", "guided_refine_title").startswith("이 방향")
+    assert text("ko", "stop") == "작업 중지"
     assert text("unknown", "headline").startswith("Turn one")

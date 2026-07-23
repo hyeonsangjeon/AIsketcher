@@ -53,4 +53,12 @@ Use `subtle` to refine one direction, `balanced` to reopen composition choices,
 and `bold` to explore a wider neighborhood. Locks are model-independent requests;
 check `CapabilityReport` for the backend’s exact support or approximation.
 
+FLUX.2 Klein does not expose a native numeric denoise-strength parameter.
+AIsketcher therefore maps the three public levels to deterministic, versioned
+edit instructions, adds the active structure-lock instruction to the model
+prompt, and records `variation_strength_requested`,
+`variation_strength_applied`, and `variation_strength_method` in backend
+metadata. Legacy SDXL image-to-image backends continue to apply the numeric
+strength directly.
+
 For seed-plan choices, see [Seeds and output counts](../guides/seeds.md).

@@ -28,26 +28,34 @@ are then recorded together.
 </p>
 
 ```bash
-python -m pip install "aisketcher[demo]==0.2.1" && aisketcher init && aisketcher studio
+python -m pip install "aisketcher[demo]==0.3.0" && aisketcher init && aisketcher studio
 ```
 
-This launches Studio. Select **Try the guided sample** to open the bundled
-fixture without downloading a model. Run `aisketcher init` only for the first
-launch; omit it when settings already exist. The
+The install identifier, Python import, and CLI are all lowercase
+`aisketcher`. This launches Studio. Select **Try the guided sample** to open the
+bundled fixture without downloading a model. Its results are read-only:
+**Refine this direction** opens the model-preparation layer rather than an
+error, and **Keep exploring the sample** closes it without changing the
+fixture. Run `aisketcher init` only for the first launch; omit it when settings
+already exist. The
 [configuration reference](reference/configuration.md) explains the YAML and
 project overrides.
 
 [![AIsketcher Studio English Simple view with a privacy-reviewed family sketch, selected result, four deterministic directions, and manifest-backed settings](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)](assets/aisketcher-studio-heritage-fixed-seed-en.jpg)
 
-*Actual local English Studio with the HPO-selected direction fixed to seed
-`6764547109648557242` and pinned `sdxl-canny-lite@1`. Select the image to
-inspect the full-size interface.*
+*Actual local English Studio with the bundled HPO Guided Sample fixed to seed
+`6764547109648557242` and pinned historical `sdxl-canny-lite@1` provenance.
+This legacy fixture is not the live default. Select the image to inspect the
+full-size interface.*
 
-The documentation-only fixture displays its prompt, profile, and structure
-directly from the authenticated manifest. Twelve new candidates were reviewed
-in four bounded HPO rounds before the selected direction was captured. It is
-separate from the bundled Pocket Kingdom Guided Sample. Model weights were
-already local, so this capture required no model download or image upload.
+The bundled, privacy-reviewed fixture displays its prompt, profile, and
+structure directly from the authenticated manifest. Twelve new candidates were
+reviewed in four bounded HPO rounds before the selected direction was captured.
+It opens without model weights, network access, or an image upload. Pocket
+Kingdom remains a separate documentation-only canonical lineage example.
+New live studies use **Auto**, which selects the recommended T4-validated
+FLUX.2 Klein Edit path. SDXL Canny remains available for legacy replay or
+intentional edge-conditioned work.
 
 ## Built for design decisions
 
@@ -70,10 +78,13 @@ and diversity properties; creative selection remains with the designer.
 ## Try without a model
 
 Studio Guided Sample uses a reviewed, hash-verified local fixture. It does not
-download weights or require a GPU. Pocket Kingdom includes its anonymous source,
-exact prepared input and Canny control, four real locally generated directions,
-human selection, and replay manifest. The [sample page](canonical-sample.md)
-shows the input, all seeds, result, and evidence together.
+download weights or require a GPU. The bundled v0.3 fixture is the
+privacy-reviewed HPO hero study with selected seed `6764547109648557242`.
+Pocket Kingdom is a separate [documentation-only canonical lineage
+example](canonical-sample.md) that shows input, seeds, results, variation, and
+evidence together. Preparing a live model is a separate, confirmed action that
+also shows the pinned Korean→English helper when it is missing; closing the
+layer performs no download.
 
 !!! warning "Artwork has a separate license"
 
@@ -84,9 +95,11 @@ shows the input, all seeds, result, and evidence together.
 
 ## Release status
 
-Version 0.2.1 is available from
-[PyPI](https://pypi.org/project/AIsketcher/0.2.1/). Its package description is
-built from this repository's README, so publishing the tagged release updates
-the PyPI introduction together with the installable artifacts. See the
-[changelog](changelog.md) and [0.2.1 release notes](releases/0.2.1.md) for the
-current boundary.
+Version 0.3.0 is available from
+[PyPI](https://pypi.org/project/AIsketcher/0.3.0/). Its package description is
+the README embedded in the release artifact, so publishing the tagged GitHub
+Release updates the PyPI introduction together with the wheel and source
+archive. Editing `main` or an existing Release does not rewrite an immutable
+PyPI version. The documentation site is deployed separately by the current
+manual-only Pages workflow. See the [changelog](changelog.md) and
+[0.3.0 release notes](releases/0.3.0.md) for the current boundary.

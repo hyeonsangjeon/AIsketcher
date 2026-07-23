@@ -48,6 +48,37 @@ def test_intent_normalizes_structure_without_hidden_prompt() -> None:
     assert intent.structure is StructureMode.FAITHFUL
 
 
+def test_intent_and_resolved_recipe_preserve_original_and_model_prompts() -> None:
+    metadata = {
+        "detected_language": "ko",
+        "status": "translated",
+        "translator": {
+            "provider": "test-double",
+            "model_id": "example/ko-en",
+            "revision": "a" * 40,
+            "local_files_only": True,
+        },
+    }
+    intent = Intent(
+        "멋진 판타지 배경",
+        model_prompt="A cool fantasy background.",
+        prompt_metadata=metadata,
+    )
+    resolved = resolve_recipe(
+        "sdxl-canny-lite@1",
+        intent,
+        None,
+        backend_name="fake",
+        capabilities=BackendCapabilities(),
+    )
+
+    assert resolved.prompt == "멋진 판타지 배경"
+    assert resolved.model_prompt == "A cool fantasy background."
+    assert resolved.generation_prompt == "A cool fantasy background."
+    assert resolved.prompt_metadata == metadata
+    assert type(resolved).from_dict(resolved.to_dict()) == resolved
+
+
 @pytest.mark.parametrize("prompt", ["", "   "])
 def test_intent_requires_a_prompt(prompt: str) -> None:
     with pytest.raises(ValidationError):

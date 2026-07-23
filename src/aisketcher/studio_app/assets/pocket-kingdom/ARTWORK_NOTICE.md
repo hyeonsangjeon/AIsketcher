@@ -1,6 +1,7 @@
-# Pocket Kingdom artwork notice
+# AIsketcher Guided Hero artwork notice
 
-The Pocket Kingdom images bundled with AIsketcher Studio are excluded from
+The privacy-reviewed family sketch and HPO-selected Studio Hero images bundled
+with AIsketcher Studio are excluded from
 the package's MIT source-code license. They are all rights reserved by
 hyeonsangjeon and, where applicable, the original artist.
 

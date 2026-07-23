@@ -32,7 +32,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - name: Check out selected revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Resolve and verify release version
@@ -71,7 +71,7 @@ jobs:
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip
@@ -147,7 +147,7 @@ jobs:
           /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
           /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
       - name: Upload verified release distributions
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: python-distributions-${{ steps.release.outputs.version }}
           path: dist/*
@@ -156,21 +156,73 @@ jobs:
 
   attach-release-assets:
     name: Attach verified distributions to GitHub Release
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs: [build, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Verify matching published GitHub Release
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected_tag="v${EXPECTED_VERSION}"
+          if [[ "${GITHUB_REF}" != "refs/tags/${expected_tag}" ]]; then
+            echo "Expected refs/tags/${expected_tag}; got ${GITHUB_REF}." >&2
+            exit 1
+          fi
+
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"
+          )"
+          release_tag="$(jq -r '.tag_name' <<< "${release_json}")"
+          release_draft="$(jq -r '.draft' <<< "${release_json}")"
+          if [[ "${release_tag}" != "${expected_tag}" || "${release_draft}" != "false" ]]; then
+            echo "A published GitHub Release for ${expected_tag} is required." >&2
+            exit 1
+          fi
       - name: Download verified release distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
-      - name: Attach distributions to the published release
+      - name: Attach missing distributions without replacing release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}"
+        run: |
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          )"
+          existing_names="$(jq -r '.assets[].name' <<< "${release_json}")"
+          missing=()
+
+          for distribution in dist/*; do
+            name="$(basename "${distribution}")"
+            if grep -Fqx -- "${name}" <<< "${existing_names}"; then
+              comparison_dir="$(mktemp -d)"
+              gh release download "${GITHUB_REF_NAME}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --pattern "${name}" \
+                --dir "${comparison_dir}"
+              if ! cmp -s "${distribution}" "${comparison_dir}/${name}"; then
+                echo "Release asset ${name} already exists with different bytes." >&2
+                rm -rf "${comparison_dir}"
+                exit 1
+              fi
+              rm -rf "${comparison_dir}"
+              echo "Keeping identical existing release asset ${name}."
+            else
+              missing+=("${distribution}")
+            fi
+          done
+
+          if (( ${#missing[@]} )); then
+            gh release upload "${GITHUB_REF_NAME}" "${missing[@]}" \
+              --repo "${GITHUB_REPOSITORY}"
+          else
+            echo "All verified distributions are already attached."
+          fi
 
   publish:
     name: Publish ${{ needs.build.outputs.version }} to PyPI
@@ -181,9 +233,64 @@ jobs:
       id-token: write
     steps:
       - name: Download verified release distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
+      - name: Verify whether PyPI already has these exact distributions
+        id: pypi_state
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          version = os.environ["EXPECTED_VERSION"]
+          endpoint = f"https://pypi.org/pypi/AIsketcher/{version}/json"
+          try:
+              with urllib.request.urlopen(endpoint, timeout=30) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+                  output.write("publish_needed=true\n")
+              raise SystemExit(0)
+
+          local = tuple(sorted(path for path in Path("dist").iterdir() if path.is_file()))
+          if len(local) != 2:
+              raise SystemExit("Expected exactly one wheel and one source archive.")
+          published = {
+              item["filename"]: item["digests"]["sha256"]
+              for item in payload.get("urls", ())
+              if isinstance(item, dict)
+              and isinstance(item.get("filename"), str)
+              and isinstance(item.get("digests"), dict)
+              and isinstance(item["digests"].get("sha256"), str)
+          }
+          missing = [path.name for path in local if path.name not in published]
+          if missing:
+              raise SystemExit(
+                  "PyPI already has this immutable version but is missing the verified "
+                  f"distribution(s): {', '.join(missing)}"
+              )
+          for path in local:
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              if digest != published[path.name]:
+                  raise SystemExit(
+                      f"PyPI distribution {path.name} exists with different bytes."
+                  )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write("publish_needed=false\n")
+          print("PyPI already contains the exact verified distributions.")
+          PY
       - name: Publish with PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@v1.14.1
+        if: steps.pypi_state.outputs.publish_needed == 'true'
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1

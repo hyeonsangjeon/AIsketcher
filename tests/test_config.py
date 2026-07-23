@@ -35,7 +35,7 @@ def test_defaults_are_valid_and_paths_are_platform_scoped(
 
     config = AIsketcherConfig()
 
-    assert config.preset == "sdxl-canny-lite@1"
+    assert config.preset == "flux2-klein-edit@1"
     assert config.seed_mode is SeedMode.SCOUT
     assert config.output_count == 4
     assert config.cache_path is None

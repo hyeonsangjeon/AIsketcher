@@ -29,9 +29,11 @@ SECRET_PATTERNS = {
 LEGACY_IMPORT = re.compile(rb"(?m)^\s*(?:from|import)\s+boto3\b")
 LEGACY_DEPENDENCY = re.compile(rb"(?im)^Requires-Dist:\s*boto3(?:\s|;|\(|$)")
 REQUIRED_WHEEL_FILES = {
-    "AIsketcher.py",
     "aisketcher/cli.py",
     "aisketcher/config.py",
+    "aisketcher/flux2_backend.py",
+    "aisketcher/model_registry.py",
+    "aisketcher/prompt_normalization.py",
     "aisketcher/studio_app/__init__.py",
     "aisketcher/studio_app/app.py",
     "aisketcher/studio_app/i18n.py",
@@ -87,12 +89,9 @@ def archive_entries(path: Path) -> Iterator[tuple[str, bytes]]:
 
 def is_package_python(name: str) -> bool:
     normalized = "/" + name.replace("\\", "/")
-    return name.endswith(".py") and (
-        Path(name).name == "AIsketcher.py"
-        or any(
-            marker in normalized
-            for marker in ("/src/aisketcher/", "/aisketcher/", "/AIsketcher/")
-        )
+    return name.endswith(".py") and any(
+        marker in normalized
+        for marker in ("/src/aisketcher/", "/aisketcher/")
     )
 
 

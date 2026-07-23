@@ -1,23 +1,19 @@
 from __future__ import annotations
 
-import importlib
 import json
 import sys
-import warnings
+import threading
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-from PIL import Image
 
 from aisketcher import (
     DiffusersBackend,
     ModelUnavailableError,
     PresetManager,
-    RemovedFeatureError,
     ValidationError,
 )
-from aisketcher.modelPipe import img2img, resize_image
 from aisketcher.presets import SDXL_BASE, get_preset
 
 
@@ -36,6 +32,8 @@ def test_preset_revisions_are_immutable_commit_hashes() -> None:
         assert all(len(model.revision) == 40 for model in preset.models)
         assert all(set(model.revision) <= set("0123456789abcdef") for model in preset.models)
     assert get_preset("quality").name == "sdxl-canny@1"
+    assert get_preset("auto").name == "flux2-klein-edit@1"
+    assert get_preset("flux").name == "flux2-klein-edit@1"
 
 
 def test_install_requires_displayed_confirmation_and_respects_disable(tmp_path: Path) -> None:
@@ -123,20 +121,149 @@ def test_install_uses_only_curated_fp16_files(
         "stabilityai/stable-diffusion-xl-base-1.0",
         "diffusers/controlnet-canny-sdxl-1.0-small",
     )
-    assert len(calls) == 2
-    assert "*.safetensors" not in calls[0]["allow_patterns"]
-    assert "unet/diffusion_pytorch_model.fp16.safetensors" in calls[0][
-        "allow_patterns"
+    plan = manager.plan_install("sdxl-canny-lite@1")
+    expected_groups = [
+        [pattern]
+        for item in plan.items
+        for pattern in item.allow_patterns
     ]
-    assert calls[1]["allow_patterns"] == [
-        "config.json",
-        "diffusion_pytorch_model.fp16.safetensors",
+    assert [call["allow_patterns"] for call in calls] == expected_groups
+    assert all("*.safetensors" not in call["allow_patterns"] for call in calls)
+    assert ["unet/diffusion_pytorch_model.fp16.safetensors"] in expected_groups
+    assert expected_groups[-2:] == [
+        ["config.json"],
+        ["diffusion_pytorch_model.fp16.safetensors"],
     ]
-    assert "*.py" in calls[0]["ignore_patterns"]
+    assert all("*.py" in call["ignore_patterns"] for call in calls)
     installed_plan = manager.plan_install("sdxl-canny-lite@1")
     assert installed_plan.installed
     assert installed_plan.download_bytes == 0
     assert installed_plan.cached_bytes == installed_plan.estimated_bytes
+
+
+def test_install_honours_pre_cancel_without_creating_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        calls.append(kwargs)
+        return str(kwargs["local_dir"])
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    token = threading.Event()
+    token.set()
+    manager = PresetManager(tmp_path)
+
+    with pytest.raises(ModelUnavailableError, match="cancelled safely"):
+        manager.install(
+            "sdxl-canny-lite@1",
+            confirm=True,
+            cancellation_token=token,
+        )
+
+    assert calls == []
+    assert not (tmp_path / "models").exists()
+
+
+def test_install_cancel_after_first_file_group_skips_later_calls_and_cleans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, object]] = []
+    cancelled = threading.Event()
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        calls.append(kwargs)
+        materialize_allowed_files(
+            Path(str(kwargs["local_dir"])), tuple(kwargs["allow_patterns"])
+        )
+        cancelled.set()
+        return str(kwargs["local_dir"])
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    manager = PresetManager(tmp_path)
+    plan = manager.plan_install("sdxl-canny-lite@1")
+
+    with pytest.raises(ModelUnavailableError, match="cancelled safely"):
+        manager.install(
+            plan.preset,
+            confirm=True,
+            cancellation_token=cancelled,
+        )
+
+    assert len(calls) == 1
+    assert calls[0]["repo_id"] == plan.items[0].repo_id
+    assert calls[0]["allow_patterns"] == ["model_index.json"]
+    assert not plan.items[0].destination.exists()
+    assert not plan.items[1].destination.exists()
+
+
+def test_install_cancel_between_artifacts_keeps_completed_item_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    checks = 0
+
+    def fake_snapshot_download(**kwargs: object) -> str:
+        repo_id = str(kwargs["repo_id"])
+        calls.append(repo_id)
+        materialize_allowed_files(
+            Path(str(kwargs["local_dir"])), tuple(kwargs["allow_patterns"])
+        )
+        return str(kwargs["local_dir"])
+
+    def should_cancel() -> bool:
+        nonlocal checks
+        checks += 1
+        first_item_boundaries = 2 + (2 * len(plan.items[0].allow_patterns))
+        return checks >= first_item_boundaries
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    manager = PresetManager(tmp_path)
+    plan = manager.plan_install("sdxl-canny-lite@1")
+
+    with pytest.raises(ModelUnavailableError, match="cancelled safely"):
+        manager.install(
+            plan.preset,
+            confirm=True,
+            should_cancel=should_cancel,
+        )
+
+    assert manager.model_path(get_preset(plan.preset).models[0]) is not None
+    assert not plan.items[1].destination.exists()
+    result = manager.install(plan.preset, confirm=True)
+    assert result.downloaded == ("diffusers/controlnet-canny-sdxl-1.0-small",)
+    assert manager.plan_install(plan.preset).installed
+
+
+def test_failed_snapshot_removes_only_incomplete_current_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_snapshot_download(**kwargs: object) -> str:
+        destination = Path(str(kwargs["local_dir"]))
+        materialize_allowed_files(destination, tuple(kwargs["allow_patterns"]))
+        if kwargs["repo_id"] == "diffusers/controlnet-canny-sdxl-1.0-small":
+            raise OSError("network interrupted")
+        return str(destination)
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    manager = PresetManager(tmp_path)
+    preset = get_preset("sdxl-canny-lite@1")
+
+    with pytest.raises(OSError, match="network interrupted"):
+        manager.install(preset.name, confirm=True)
+
+    assert manager.model_path(preset.models[0]) is not None
+    assert manager.model_path(preset.models[1]) is None
+    assert not manager.model_destination(preset.models[1]).exists()
 
 
 def test_constructing_diffusers_backend_is_dependency_lazy() -> None:
@@ -151,31 +278,3 @@ def test_download_policy_cannot_override_disabled_manager(tmp_path: Path) -> Non
     manager = PresetManager(tmp_path, allow_downloads=False)
     with pytest.raises(ValidationError, match="conflicts"):
         DiffusersBackend(preset_manager=manager, local_files_only=False)
-
-
-def test_legacy_resize_warns_and_preserves_aspect_ratio(tmp_path: Path) -> None:
-    path = tmp_path / "image.png"
-    Image.new("RGB", (160, 80), "white").save(path)
-    with pytest.warns(DeprecationWarning, match="removed in 0.3.0"):
-        result = resize_image(path, 80)
-    assert result.size == (80, 40)
-
-
-def test_legacy_aws_translation_argument_is_explicitly_removed(tmp_path: Path) -> None:
-    path = tmp_path / "image.png"
-    Image.new("RGB", (80, 80), "white").save(path)
-    with (
-        pytest.warns(DeprecationWarning),
-        pytest.raises(RemovedFeatureError, match="AWS translation"),
-    ):
-        img2img(path, "castle", pipe=object(), trans_info={"region": "legacy"})
-
-
-def test_uppercase_facade_warns() -> None:
-    sys.modules.pop("AIsketcher", None)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        module = importlib.import_module("AIsketcher")
-    assert module.img2img
-    assert module.modelPipe.resize_image
-    assert any("uppercase facade" in str(item.message) for item in caught)
