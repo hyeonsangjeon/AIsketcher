@@ -71,7 +71,7 @@ jobs:
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -186,4 +186,4 @@ jobs:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
       - name: Publish with PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: pypa/gh-action-pypi-publish@v1.14.1
