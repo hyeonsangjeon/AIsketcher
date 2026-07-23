@@ -182,10 +182,17 @@ jobs:
             echo "A published GitHub Release for ${expected_tag} is required." >&2
             exit 1
           fi
-      - name: Download verified release distributions
+      - name: Download newly verified release distributions
+        if: needs.publish.outputs.publish_needed == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist
+      - name: Download canonical distributions already published on PyPI
+        if: needs.publish.outputs.publish_needed == 'false'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: published-python-distributions-${{ needs.build.outputs.version }}
           path: dist
       - name: Attach missing distributions without replacing release assets
         env:
@@ -230,8 +237,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write
+    outputs:
+      publish_needed: ${{ steps.pypi_state.outputs.publish_needed }}
     steps:
+      - name: Check out release verification tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Download verified release distributions
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -248,7 +262,10 @@ jobs:
           import hashlib
           import json
           import os
+          import subprocess
+          import sys
           import urllib.error
+          import urllib.parse
           import urllib.request
           from pathlib import Path
 
@@ -267,30 +284,80 @@ jobs:
           local = tuple(sorted(path for path in Path("dist").iterdir() if path.is_file()))
           if len(local) != 2:
               raise SystemExit("Expected exactly one wheel and one source archive.")
-          published = {
-              item["filename"]: item["digests"]["sha256"]
-              for item in payload.get("urls", ())
-              if isinstance(item, dict)
-              and isinstance(item.get("filename"), str)
-              and isinstance(item.get("digests"), dict)
-              and isinstance(item["digests"].get("sha256"), str)
-          }
-          missing = [path.name for path in local if path.name not in published]
-          if missing:
+          published: dict[str, dict[str, object]] = {}
+          for item in payload.get("urls", ()):
+              if (
+                  not isinstance(item, dict)
+                  or not isinstance(item.get("filename"), str)
+                  or not isinstance(item.get("digests"), dict)
+                  or not isinstance(item["digests"].get("sha256"), str)
+                  or not isinstance(item.get("url"), str)
+              ):
+                  raise SystemExit("PyPI returned incomplete distribution metadata.")
+              filename = item["filename"]
+              if filename in published:
+                  raise SystemExit(f"PyPI returned duplicate metadata for {filename}.")
+              published[filename] = item
+
+          local_names = {path.name for path in local}
+          published_names = set(published)
+          if local_names != published_names:
+              missing = sorted(local_names - published_names)
+              unexpected = sorted(published_names - local_names)
               raise SystemExit(
-                  "PyPI already has this immutable version but is missing the verified "
-                  f"distribution(s): {', '.join(missing)}"
+                  "PyPI already has this immutable version with a different distribution "
+                  f"set; missing={missing}, unexpected={unexpected}."
               )
+
+          canonical_dir = Path("published-dist")
+          canonical_dir.mkdir()
           for path in local:
-              digest = hashlib.sha256(path.read_bytes()).hexdigest()
-              if digest != published[path.name]:
+              item = published[path.name]
+              url = item["url"]
+              assert isinstance(url, str)
+              parsed = urllib.parse.urlparse(url)
+              if (
+                  parsed.scheme != "https"
+                  or parsed.hostname is None
+                  or not parsed.hostname.endswith(".pythonhosted.org")
+              ):
+                  raise SystemExit(f"Refusing unexpected PyPI file URL for {path.name}.")
+
+              destination = canonical_dir / path.name
+              with urllib.request.urlopen(url, timeout=60) as response:
+                  destination.write_bytes(response.read())
+
+              digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+              expected_digest = item["digests"]["sha256"]
+              if digest != expected_digest:
                   raise SystemExit(
-                      f"PyPI distribution {path.name} exists with different bytes."
+                      f"Downloaded PyPI distribution {path.name} failed its SHA-256 check."
                   )
+
+              subprocess.run(
+                  [
+                      sys.executable,
+                      "tests/docs/verify_distribution_equivalence.py",
+                      str(path),
+                      str(destination),
+                  ],
+                  check=True,
+              )
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
               output.write("publish_needed=false\n")
-          print("PyPI already contains the exact verified distributions.")
+          print(
+              "PyPI already contains content-equivalent distributions; "
+              "preserved their canonical bytes for Release recovery."
+          )
           PY
+      - name: Preserve canonical distributions already on PyPI
+        if: steps.pypi_state.outputs.publish_needed == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: published-python-distributions-${{ needs.build.outputs.version }}
+          path: published-dist/*
+          if-no-files-found: error
+          retention-days: 7
       - name: Publish with PyPI Trusted Publishing
         if: steps.pypi_state.outputs.publish_needed == 'true'
         uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1

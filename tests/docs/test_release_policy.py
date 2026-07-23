@@ -89,7 +89,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     )
     assert workflow.count(
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8"
-    ) == 2
+    ) == 3
     assert "needs: [build, publish]" in workflow
     assert "Verify matching published GitHub Release" in workflow
     assert 'gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"' in workflow
@@ -101,8 +101,12 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "already exists with different bytes" in workflow
     assert "Verify whether PyPI already has these exact distributions" in workflow
     assert "pypi_state.outputs.publish_needed == 'true'" in workflow
-    assert "PyPI already contains the exact verified distributions." in workflow
-    assert "PyPI distribution {path.name} exists with different bytes." in workflow
+    assert "pypi_state.outputs.publish_needed == 'false'" in workflow
+    assert "verify_distribution_equivalence.py" in workflow
+    assert "published-python-distributions-" in workflow
+    assert "preserved their canonical bytes for Release recovery" in workflow
+    assert "Downloaded PyPI distribution {path.name} failed its SHA-256 check." in workflow
+    assert 'parsed.hostname.endswith(".pythonhosted.org")' in workflow
     assert "--clobber" not in workflow
     assert "DISPATCH_CONFIRM" in workflow
     assert "password:" not in workflow

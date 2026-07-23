@@ -25,6 +25,7 @@ from aisketcher.studio_app.app import (
     _seed_output_state,
     _variation_choices,
 )
+from aisketcher.studio_app.i18n import text
 from aisketcher.studio_app.runtime import AppResponse, AppState
 
 
@@ -602,6 +603,12 @@ def test_browser_refresh_reconnects_to_the_same_running_session(tmp_path: Path) 
     stopping = app._studio_recover_browser_session(state, False)
     assert stopping[5].startswith("다시 연결한 작업")
     controller.finish_operation(state, operation_event)
+
+    idle = app._studio_recover_browser_session(state, False, stopping[5])
+    assert idle[5]["value"] == text("ko", "ready")
+
+    preserved = app._studio_recover_browser_session(state, False, "Keep this status")
+    assert "value" not in preserved[5]
 
 
 @pytest.mark.skipif(

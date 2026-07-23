@@ -1016,6 +1016,7 @@ def build_app(
         def recover_browser_session(
             state_value: Mapping[str, Any],
             force_restore: bool = False,
+            current_status: str | None = None,
         ) -> tuple[Any, ...]:
             state = AppState.from_payload(state_value)
             operation = controller.operation_state(state)
@@ -1076,13 +1077,34 @@ def build_app(
                     gr.update(interactive=True),
                     *nav_updates,
                 )
+            stale_recovery_statuses = {
+                text(language, status_key)
+                for language in ("en", "ko")
+                for status_key in (
+                    "status_reconnected_running",
+                    "status_reconnected_stopping",
+                )
+            }
+            idle_status = gr.update()
+            if current_status in stale_recovery_statuses:
+                idle_status = gr.update(
+                    value=(
+                        recovered.status
+                        if recovered is not None
+                        else (
+                            text(state.language, "ready")
+                            if guided_available
+                            else text(state.language, "unavailable")
+                        )
+                    )
+                )
             return (
                 state.payload(),
                 gr.update(),
                 gr.update(),
                 gr.update(),
                 gr.update(),
-                gr.update(),
+                idle_status,
                 gr.update(),
                 gr.update(),
                 gr.update(),
@@ -2006,8 +2028,12 @@ def build_app(
             show_progress="hidden",
         )
         session_poll.tick(
-            recover_browser_session,
-            inputs=[app_state],
+            lambda state_value, current_status: recover_browser_session(
+                state_value,
+                False,
+                current_status,
+            ),
+            inputs=[app_state, status],
             outputs=recovery_outputs,
             queue=False,
             show_progress="hidden",

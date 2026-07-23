@@ -16,10 +16,13 @@ request validation and use protected deployment boundaries.
   `pypi` environment using Trusted Publishing. A confirmed manual dispatch from
   the exact tag remains available for recovery after a failed publication. The
   recovery path requires an existing, non-draft GitHub Release for that exact
-  tag and attaches the same verified distributions after PyPI succeeds. If
-  PyPI already contains both files with the exact same SHA-256 digests, a retry
-  skips the immutable upload and continues to Release-asset recovery; a missing
-  or different file fails closed.
+  tag and attaches the verified distributions after PyPI succeeds. If PyPI
+  already contains the immutable version, a retry downloads those canonical
+  bytes, verifies their SHA-256 digests against PyPI metadata, and compares
+  their normalized archive contents with the newly verified build. A
+  content-equivalent retry skips the immutable upload and reuses the exact PyPI
+  files for Release-asset recovery; a missing, unexpected, or content-different
+  file fails closed.
 
 `README.md` is the project description embedded in the built wheel and source
 archive. Publishing a new tagged release therefore updates the PyPI page with
