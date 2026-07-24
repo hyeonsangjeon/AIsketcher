@@ -534,8 +534,8 @@ def test_m2m100_preserves_canonical_terms_without_mixing_english_into_korean_sou
     translated_segments = {
         "알파벳 A 모양의 스케치 구조를 유지한 정교한": "A refined",
         "왕국, 귀여운 작은": "kingdom with a cute little",
-        ", 선명한": ", vivid",
-        ", 드라마틱한": ", and dramatic",
+        "선명한": "vivid",
+        "드라마틱한": "and dramatic",
     }
 
     class FakeTokenizer:
@@ -596,6 +596,99 @@ def test_m2m100_preserves_canonical_terms_without_mixing_english_into_korean_sou
     assert len(generate_calls) == len(translated_segments)
     assert all(call["max_new_tokens"] == 512 for call in generate_calls)
     assert all(call["forced_bos_token_id"] == 41 for call in generate_calls)
+
+
+def test_m2m100_preserves_glossary_boundaries_for_azure_acceptance_prompt() -> None:
+    source = (
+        "판타지 미니어처 나라, 코발트와 금색, 겹겹이 자른 종이 공예, "
+        "귀여운 마스코트, 스튜디오 조명"
+    )
+    tokenized_sources: list[str] = []
+    source_by_token_id: dict[int, str] = {}
+    translated_segments = {
+        "나라": "country",
+        "귀여운": "the cute",
+    }
+
+    class FakeTokenizer:
+        def get_lang_id(self, language: str) -> int:
+            assert language == "en"
+            return 41
+
+        def __call__(self, text: str, **kwargs: Any) -> dict[str, list[list[int]]]:
+            assert kwargs == {
+                "return_tensors": "pt",
+                "truncation": False,
+            }
+            tokenized_sources.append(text)
+            token_id = len(tokenized_sources)
+            source_by_token_id[token_id] = text
+            return {"input_ids": [[token_id]]}
+
+        def batch_decode(self, generated: Any, **kwargs: Any) -> list[str]:
+            assert kwargs == {"skip_special_tokens": True}
+            return [translated_segments[source_by_token_id[generated[0][0]]]]
+
+    class FakeModel:
+        def generate(self, **kwargs: Any) -> list[list[int]]:
+            return [[kwargs["input_ids"][0][0]]]
+
+    translator = M2M100KoreanEnglishTranslator()
+    translator._components = (FakeTokenizer(), FakeModel())
+
+    result = normalize_prompt(source, translator=translator)
+
+    assert result.original_prompt == source
+    assert result.status is PromptNormalizationStatus.TRANSLATED
+    assert result.translator == translator.metadata
+    assert result.require_model_prompt() == (
+        "fantasy miniature country, cobalt and gold, layered cut-paper craft, "
+        "the cute mascot, studio lighting"
+    )
+    assert tokenized_sources == [source, "나라", "귀여운"]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("주홍과 노랑", "vermilion and yellow"),
+        ("코발트와 금색", "cobalt and gold"),
+        ("코발트및금색", "cobalt and gold"),
+    ],
+)
+def test_m2m100_joins_reviewed_terms_with_exact_connectors(
+    source: str,
+    expected: str,
+) -> None:
+    tokenized_sources: list[str] = []
+
+    class FakeTokenizer:
+        def get_lang_id(self, language: str) -> int:
+            assert language == "en"
+            return 41
+
+        def __call__(self, text: str, **kwargs: Any) -> dict[str, list[list[int]]]:
+            assert kwargs == {
+                "return_tensors": "pt",
+                "truncation": False,
+            }
+            tokenized_sources.append(text)
+            return {"input_ids": [[1]]}
+
+        def batch_decode(self, generated: Any, **kwargs: Any) -> list[str]:
+            del generated, kwargs
+            raise AssertionError("reviewed connectors must not be generated")
+
+    class FakeModel:
+        def generate(self, **kwargs: Any) -> list[list[int]]:
+            del kwargs
+            raise AssertionError("reviewed connectors must not be generated")
+
+    translator = M2M100KoreanEnglishTranslator()
+    translator._components = (FakeTokenizer(), FakeModel())
+
+    assert translator.translate(source) == expected
+    assert tokenized_sources == [source]
 
 
 def test_m2m100_all_glossary_prompt_preserves_meaning_without_generation() -> None:

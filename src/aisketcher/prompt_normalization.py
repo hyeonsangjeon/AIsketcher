@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import threading
+import unicodedata
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -120,6 +121,15 @@ _KOREAN_VISUAL_DESIGN_PATTERN = re.compile(
         re.escape(korean) for korean, _english in _KOREAN_VISUAL_DESIGN_TERMINOLOGY
     )
 )
+# A connective particle between two reviewed terms is grammatical glue, not a
+# useful standalone sentence for M2M100. Keep this deliberately small: other
+# Korean text still goes through the pinned translator instead of being
+# presented as a hand-authored translation.
+_KOREAN_REVIEWED_TERM_CONNECTORS = {
+    "과": "and",
+    "와": "and",
+    "및": "and",
+}
 
 DESIGN_EDIT_PROMPT_TEMPLATE = (
     "Design image editing brief:\n"
@@ -439,15 +449,23 @@ class M2M100KoreanEnglishTranslator:
             )
 
         translated_segments: list[str] = []
-        for segment, reviewed_translation in segments:
+        for index, (segment, reviewed_translation) in enumerate(segments):
             if reviewed_translation is not None:
                 translated_segments.append(reviewed_translation)
                 continue
-            leading = segment[: len(segment) - len(segment.lstrip())]
-            trailing = segment[len(segment.rstrip()) :]
-            translatable = segment.strip()
+            leading, translatable, trailing = _split_prompt_boundary_delimiters(
+                segment
+            )
             if not translatable or not contains_hangul(translatable):
                 translated_segments.append(segment)
+                continue
+            reviewed_connector = _reviewed_term_connector(
+                segments, index, translatable
+            )
+            if reviewed_connector is not None:
+                translated_segments.append(
+                    f"{leading}{reviewed_connector}{trailing}"
+                )
                 continue
             segment_encoded = _encode_m2m100_source(tokenizer, translatable)
             _enforce_m2m100_input_limit(segment_encoded)
@@ -460,7 +478,7 @@ class M2M100KoreanEnglishTranslator:
             )
             translated_segments.append(f"{leading}{translated}{trailing}")
 
-        translated_prompt = "".join(translated_segments).strip()
+        translated_prompt = _join_translated_prompt_segments(translated_segments)
         if not translated_prompt:
             raise ValidationError("M2M100 translator returned an empty translation")
         return translated_prompt
@@ -823,6 +841,52 @@ def _segment_korean_visual_design_terminology(
     if cursor < len(source):
         segments.append((source[cursor:], None))
     return tuple(segments) or ((source, None),)
+
+
+def _split_prompt_boundary_delimiters(source: str) -> tuple[str, str, str]:
+    """Keep punctuation and whitespace out of isolated translation calls.
+
+    M2M100 may omit a leading comma when translating a short Korean fragment.
+    The delimiter came from the user's prompt, so preserve it deterministically
+    and translate only the fragment's lexical core.
+    """
+
+    start = 0
+    while start < len(source) and _is_prompt_boundary_delimiter(source[start]):
+        start += 1
+    end = len(source)
+    while end > start and _is_prompt_boundary_delimiter(source[end - 1]):
+        end -= 1
+    return source[:start], source[start:end], source[end:]
+
+
+def _is_prompt_boundary_delimiter(character: str) -> bool:
+    return character.isspace() or unicodedata.category(character).startswith("P")
+
+
+def _reviewed_term_connector(
+    segments: tuple[tuple[str, str | None], ...],
+    index: int,
+    translatable: str,
+) -> str | None:
+    """Resolve only exact connectors occurring between two reviewed terms."""
+
+    if index <= 0 or index >= len(segments) - 1:
+        return None
+    if segments[index - 1][1] is None or segments[index + 1][1] is None:
+        return None
+    return _KOREAN_REVIEWED_TERM_CONNECTORS.get(translatable)
+
+
+def _join_translated_prompt_segments(segments: list[str]) -> str:
+    """Join fragments without fusing adjacent translated English words."""
+
+    joined = ""
+    for segment in segments:
+        if joined and segment and joined[-1].isalnum() and segment[0].isalnum():
+            joined += " "
+        joined += segment
+    return joined.strip()
 
 
 def _single_input_token_count(input_ids: Any) -> int:
