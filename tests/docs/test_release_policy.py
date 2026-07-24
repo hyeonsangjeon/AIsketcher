@@ -11,6 +11,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github/workflows"
 SCANNER = ROOT / "tests/docs/scan_distribution.py"
+STAGED_UPLOAD_VERIFIER = ROOT / "tests/docs/verify_staged_upload.py"
+
+WHEEL = "aisketcher-0.3.0-py3-none-any.whl"
+SDIST = "aisketcher-0.3.0.tar.gz"
 
 
 def _release_tag_is_in_default_history(
@@ -209,6 +213,8 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "shutil.copy2(local_by_name[name], upload_dir / name)" in workflow
     assert "pypi_state.outputs.upload_needed == 'true'" in workflow
     assert "packages-dir: upload-dist/" in workflow
+    assert "python tests/docs/verify_staged_upload.py" in workflow
+    assert "if path.is_file() and path.name in expected" in workflow
     assert "verify_distribution_equivalence.py" in workflow
     assert "published-python-distributions-" in workflow
     assert "Downloaded PyPI distribution {filename} failed its SHA-256 check." in workflow
@@ -226,6 +232,74 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "source archive must contain exactly one PKG-INFO file" in workflow
     assert "python -m pytest" in workflow
     assert "scan_distribution.py --repository . dist/*" in workflow
+
+
+def _verify_staged_upload(directory: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(STAGED_UPLOAD_VERIFIER),
+            "--directory",
+            str(directory),
+            "--expected",
+            WHEEL,
+            "--expected",
+            SDIST,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize("staged", [(WHEEL, SDIST), (WHEEL,), (SDIST,)])
+def test_staged_upload_accepts_only_expected_attestation_sidecars(
+    tmp_path: Path,
+    staged: tuple[str, ...],
+) -> None:
+    for name in (*staged, *(f"{name}.publish.attestation" for name in staged)):
+        (tmp_path / name).write_bytes(b"reviewed")
+
+    result = _verify_staged_upload(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    for name in staged:
+        assert name in result.stdout
+
+
+@pytest.mark.parametrize(
+    "unexpected_name",
+    [
+        "notes.txt",
+        f"{WHEEL}.attestation",
+        f"{WHEEL}.publish.attestation.json",
+        "another-package.whl.publish.attestation",
+    ],
+)
+def test_staged_upload_rejects_every_other_file(
+    tmp_path: Path,
+    unexpected_name: str,
+) -> None:
+    (tmp_path / WHEEL).write_bytes(b"reviewed")
+    (tmp_path / unexpected_name).write_bytes(b"unreviewed")
+
+    result = _verify_staged_upload(tmp_path)
+
+    assert result.returncode != 0
+    assert unexpected_name in result.stderr
+
+
+def test_staged_upload_rejects_orphan_expected_attestation(
+    tmp_path: Path,
+) -> None:
+    attestation = f"{SDIST}.publish.attestation"
+    (tmp_path / WHEEL).write_bytes(b"reviewed")
+    (tmp_path / attestation).write_bytes(b"orphan")
+
+    result = _verify_staged_upload(tmp_path)
+
+    assert result.returncode != 0
+    assert attestation in result.stderr
 
 
 def test_release_docs_define_the_exact_wheel_and_sdist_recovery_boundary() -> None:

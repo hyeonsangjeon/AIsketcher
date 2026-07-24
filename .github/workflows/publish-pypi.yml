@@ -639,6 +639,10 @@ jobs:
           EXPECTED_WHEEL: ${{ needs.build.outputs.wheel_filename }}
           EXPECTED_WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
         run: |
+          python tests/docs/verify_staged_upload.py \
+            --directory upload-dist \
+            --expected "${EXPECTED_WHEEL}" \
+            --expected "${EXPECTED_SDIST}"
           python - <<'PY'
           from __future__ import annotations
 
@@ -697,10 +701,10 @@ jobs:
           if set(local) != set(expected):
               raise SystemExit("The approved local distribution set changed unexpectedly.")
           uploaded_names = {
-              path.name for path in Path("upload-dist").iterdir() if path.is_file()
+              path.name
+              for path in Path("upload-dist").iterdir()
+              if path.is_file() and path.name in expected
           }
-          if not uploaded_names.issubset(expected):
-              raise SystemExit("The staged upload directory contains an unexpected file.")
           endpoint = f"https://pypi.org/pypi/AIsketcher/{version}/json"
 
           for attempt in range(12):
