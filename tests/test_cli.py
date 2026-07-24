@@ -130,7 +130,7 @@ def test_studio_uses_the_managed_cache_for_the_korean_translator(
     import aisketcher as package
     import aisketcher.studio_app as studio_app
     from aisketcher.cli import _launch_studio
-    from aisketcher.prompt_normalization import MarianKoreanEnglishTranslator
+    from aisketcher.prompt_normalization import M2M100KoreanEnglishTranslator
 
     captured: dict[str, object] = {}
     cache = tmp_path / "models"
@@ -177,7 +177,7 @@ def test_studio_uses_the_managed_cache_for_the_korean_translator(
     assert _launch_studio(config, port=7862) == 0
 
     translator = captured["prompt_translator"]
-    assert isinstance(translator, MarianKoreanEnglishTranslator)
+    assert isinstance(translator, M2M100KoreanEnglishTranslator)
     assert translator.cache_dir == str(cache / "translation")
     build_kwargs = captured["build_kwargs"]
     assert isinstance(build_kwargs, dict)

@@ -87,13 +87,17 @@ explicit reset action.
 The creative brief remains the user-authored source of truth. If Studio detects
 Korean, it preserves that original and prepares a separate English
 model-facing prompt with the pinned local translator. The original, prepared
-prompt, translator revision, and any later refinement instruction are recorded
-separately. The translator is never downloaded implicitly: the model
-preparation layer shows its pinned revision, roughly 315 MB transfer, and
-license alongside the selected image model. **Review & prepare model** confirms
-both downloads; leaving setup before pressing it performs no network access. If
-the translator runtime or weights are not ready, generation stops before GPU
-work; Studio does not silently send raw Korean text to an image model.
+prompt, translator ID and revision, and any later refinement instruction are
+recorded separately. A deterministic glossary protects recognized
+visual-design terminology before Korean→English translation. The translator is
+never downloaded implicitly: the model preparation layer shows the
+MIT-licensed `facebook/m2m100_418M` helper, its pinned revision, and roughly
+1.9 GB transfer alongside the selected image model's own license.
+**Review & prepare model** confirms both downloads; leaving setup before
+pressing it performs no network access. If the translator runtime or weights
+are not ready, generation stops before GPU work; Studio does not silently send
+raw Korean text to an image model. Terminology protection improves consistency
+for its bounded glossary but does not guarantee perfect translation.
 
 **Refine this direction** opens a short additional-instruction field. Leave it
 blank for the documented balanced polish, or describe only the change you
@@ -123,14 +127,15 @@ Model preparation and generation can take longer on the first run. Studio
 labels elapsed time separately from an estimate; `42.3 / 107.6 s` means
 42.3 seconds elapsed against a 107.6-second estimate, not a hard timeout.
 
-While a model download or generation is queued or running, use **Stop** instead
-of refreshing the tab. Queued work is removed immediately. Active generation
-is cooperatively cancelled at a backend step/output boundary; a model download
-stops after the active transfer, at the next curated selected-file boundary.
-Complete marked image-model entries remain available and incomplete unmarked
-destinations are cleaned. Korean-helper setup checks Stop between tokenizer and
-model loading and can reuse files for its pinned revision; it does not use the
-image-model marker format.
+While model preparation or generation is queued or running, use **Stop**
+instead of refreshing the tab. Queued work is removed immediately. Active
+generation is cooperatively cancelled at a backend step/output boundary;
+preparation checks Stop between streamed SHA-256 chunks and curated download
+groups. Existing files from a stopped verification remain untrusted until a
+retry succeeds, while an incomplete fresh managed destination is cleaned.
+Korean-helper setup checks Stop between tokenizer and model loading and can
+reuse files for its pinned revision; it does not use the image-model marker
+format.
 
 If the page reconnects to the same browser session, Studio restores the active
 or stopping job and its Stop control; a refresh by itself does not cancel GPU

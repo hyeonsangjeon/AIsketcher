@@ -93,7 +93,7 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     # Optional UI and model imports stay behind the explicit Studio command so
     # the lightweight SDK and `aisketcher init` never import Gradio or Torch.
     from . import PresetManager, Studio
-    from .prompt_normalization import MarianKoreanEnglishTranslator
+    from .prompt_normalization import M2M100KoreanEnglishTranslator
     from .studio_app import AppController, build_app
 
     manager = PresetManager(
@@ -111,7 +111,7 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     controller = AppController(
         studio_factory=studio_factory,
         model_installer=manager,
-        prompt_translator=MarianKoreanEnglishTranslator(
+        prompt_translator=M2M100KoreanEnglishTranslator(
             cache_dir=str(manager.cache_dir / "translation"),
         ),
     )

@@ -17,9 +17,9 @@ from typing import Any
 
 from ..errors import AIsketcherError
 from ..prompt_normalization import (
-    MARIAN_KO_EN_DOWNLOAD_BYTES,
-    MARIAN_KO_EN_MODEL_ID,
-    MARIAN_KO_EN_REVISION,
+    M2M100_KO_EN_DOWNLOAD_BYTES,
+    M2M100_KO_EN_MODEL_ID,
+    M2M100_KO_EN_REVISION,
 )
 from .i18n import navigation_choices, normalize_language, structure_choices, text
 from .runtime import (
@@ -92,6 +92,24 @@ DEFAULT_LOCKS = ("structure",)
 OUTPUT_CHOICES = (("1", 1), ("4", 4), ("8", 8))
 LOCKED_OUTPUT_CHOICES = (("1", 1),)
 BROWSER_SESSION_STORAGE_KEY = "aisketcher.v3.browser-session"
+BROWSER_TAB_STORAGE_KEY = "aisketcher.v3.browser-tab"
+BROWSER_TAB_SESSION_JS = f"""
+(state) => {{
+  const key = {BROWSER_TAB_STORAGE_KEY!r};
+  const navigation = performance.getEntriesByType("navigation")[0]?.type || "navigate";
+  let sessionId = window.sessionStorage.getItem(key);
+  if (!sessionId || navigation !== "reload") {{
+    if (typeof crypto.randomUUID === "function") {{
+      sessionId = crypto.randomUUID().replaceAll("-", "");
+    }} else {{
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      sessionId = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    }}
+    window.sessionStorage.setItem(key, sessionId);
+  }}
+  return {{...(state || {{}}), session_id: sessionId}};
+}}
+"""
 
 
 def _heading(language: str) -> str:
@@ -298,8 +316,8 @@ def _render_translator_plan(language: str, controller: AppController) -> str:
     translator = getattr(controller, "prompt_translator", None)
     metadata = getattr(translator, "metadata", None)
     if (
-        getattr(metadata, "model_id", None) != MARIAN_KO_EN_MODEL_ID
-        or getattr(metadata, "revision", None) != MARIAN_KO_EN_REVISION
+        getattr(metadata, "model_id", None) != M2M100_KO_EN_MODEL_ID
+        or getattr(metadata, "revision", None) != M2M100_KO_EN_REVISION
     ):
         return ""
     cache_dir = getattr(translator, "cache_dir", None)
@@ -313,17 +331,17 @@ def _render_translator_plan(language: str, controller: AppController) -> str:
             '<details class="installer-plan-details translator-plan-details">',
             "<summary>",
             f"<span>{html.escape(text(language, 'translator_plan_heading'))}</span>",
-            f"<strong>{_humanize_bytes(MARIAN_KO_EN_DOWNLOAD_BYTES)}</strong>",
+            f"<strong>{_humanize_bytes(M2M100_KO_EN_DOWNLOAD_BYTES)}</strong>",
             "</summary>",
             '<div class="installer-plan-body">',
-            f"<p>{_html_code(MARIAN_KO_EN_MODEL_ID)}</p>",
+            f"<p>{_html_code(M2M100_KO_EN_MODEL_ID)}</p>",
             (
                 f"<p><strong>{html.escape(text(language, 'install_plan_revision'))}:"
-                f"</strong> {_html_code(MARIAN_KO_EN_REVISION)}</p>"
+                f"</strong> {_html_code(M2M100_KO_EN_REVISION)}</p>"
             ),
             (
                 f"<p><strong>{html.escape(text(language, 'translator_plan_transfer'))}:"
-                f"</strong> {_humanize_bytes(MARIAN_KO_EN_DOWNLOAD_BYTES)}</p>"
+                f"</strong> {_humanize_bytes(M2M100_KO_EN_DOWNLOAD_BYTES)}</p>"
             ),
             (
                 f"<p><strong>{html.escape(text(language, 'translator_plan_cache'))}:"
@@ -331,8 +349,8 @@ def _render_translator_plan(language: str, controller: AppController) -> str:
             ),
             (
                 f"<p><strong>{html.escape(text(language, 'translator_plan_license'))}:"
-                '</strong> <a href="https://www.apache.org/licenses/LICENSE-2.0" '
-                'target="_blank" rel="noreferrer">Apache-2.0</a></p>'
+                '</strong> <a href="https://huggingface.co/facebook/m2m100_418M" '
+                'target="_blank" rel="noreferrer">MIT</a></p>'
             ),
             "</div>",
             "</details>",
@@ -362,26 +380,14 @@ def _model_plan(
     canonical = FLUX_PRESET if preset == AUTO_MODEL else preset
     plan_model_install = getattr(controller, "plan_model_install", None)
     if not callable(plan_model_install):
-        return (
-            f"{static_plan}\n\n---\n\n{translator_plan}"
-            if translator_plan
-            else static_plan
-        )
+        return f"{static_plan}\n\n---\n\n{translator_plan}" if translator_plan else static_plan
     plan = plan_model_install(canonical)
     if plan is None:
-        return (
-            f"{static_plan}\n\n---\n\n{translator_plan}"
-            if translator_plan
-            else static_plan
-        )
+        return f"{static_plan}\n\n---\n\n{translator_plan}" if translator_plan else static_plan
     try:
         current_plan = _render_install_plan(language, plan)
     except (AttributeError, TypeError, ValueError):
-        return (
-            f"{static_plan}\n\n---\n\n{translator_plan}"
-            if translator_plan
-            else static_plan
-        )
+        return f"{static_plan}\n\n---\n\n{translator_plan}" if translator_plan else static_plan
     sections = (static_plan, current_plan, translator_plan)
     return "\n\n---\n\n".join(section for section in sections if section)
 
@@ -407,6 +413,34 @@ def _preset_generation_defaults(preset: str) -> tuple[bool, int, float]:
     if canonical == FLUX_PRESET:
         return False, 4, 1.0
     return True, 30, 5.0
+
+
+def _recipe_control_state(
+    language: str,
+    preset: str,
+) -> tuple[int, float, bool, str, str]:
+    """Describe whether the selected preset safely supports recipe overrides."""
+
+    canonical, _ = _preset_selection(language, preset)
+    _canny, steps, guidance = _preset_generation_defaults(canonical)
+    locked = canonical == FLUX_PRESET
+    if normalize_language(language) == "ko":
+        locked_steps = "검증된 FLUX.2 Klein 품질 프로필은 4단계로 고정됩니다."
+        locked_guidance = "검증된 FLUX.2 Klein 품질 프로필은 CFG 1로 고정됩니다."
+        editable_steps = "레거시 SD/ControlNet 프로필의 추론 단계를 조정합니다."
+        editable_guidance = "레거시 SD/ControlNet 프로필의 CFG 값을 조정합니다."
+    else:
+        locked_steps = "The validated FLUX.2 Klein quality profile is locked to 4 steps."
+        locked_guidance = "The validated FLUX.2 Klein quality profile is locked to CFG 1."
+        editable_steps = "Adjust inference steps for the legacy SD/ControlNet profile."
+        editable_guidance = "Adjust CFG for the legacy SD/ControlNet profile."
+    return (
+        steps,
+        guidance,
+        not locked,
+        editable_steps if not locked else locked_steps,
+        editable_guidance if not locked else locked_guidance,
+    )
 
 
 def _canny_info(language: str, preset: str) -> str:
@@ -456,6 +490,13 @@ def _generation_args_for_view(values: Sequence[Any]) -> tuple[Any, ...]:
         resolved[10] = steps
         resolved[11] = guidance
         resolved[12] = DEFAULT_LOCKS
+    else:
+        preset, _ = _preset_selection(state.language, str(resolved[5]))
+        resolved[5] = preset
+        _canny, steps, guidance = _preset_generation_defaults(preset)
+        if preset == FLUX_PRESET:
+            resolved[10] = steps
+            resolved[11] = guidance
     return tuple(resolved)
 
 
@@ -531,7 +572,14 @@ def build_app(
         raise ValueError("seed must be a non-negative 63-bit integer")
     advanced_output_count = 1 if default_seed_mode == "locked" else default_output_count
     unlocked_output_default = default_output_count if default_seed_mode != "locked" else 4
-    default_canny, default_steps, default_guidance = _preset_generation_defaults(default_preset)
+    default_canny = _preset_generation_defaults(default_preset)[0]
+    (
+        default_steps,
+        default_guidance,
+        default_recipe_interactive,
+        default_steps_info,
+        default_guidance_info,
+    ) = _recipe_control_state(language, default_preset)
     controller = controller or AppController()
     guided_available = controller.guided.available
     initial_status = text(language, "ready") if guided_available else text(language, "unavailable")
@@ -559,6 +607,8 @@ def build_app(
             controller.initial_state(language),
             storage_key=BROWSER_SESSION_STORAGE_KEY,
         )
+        generation_operation_id = gr.State("")
+        model_operation_id = gr.State("")
         active_seed_mode = gr.State(default_seed_mode)
         unlocked_output_count = gr.State(unlocked_output_default)
         session_poll = gr.Timer(1.0, active=True)
@@ -684,7 +734,11 @@ def build_app(
                     )
                 guided_button = gr.Button(
                     text(language, "guided"),
-                    interactive=guided_available,
+                    # The load-time tab binding replaces the serialized
+                    # BrowserState session id. Keep the first action disabled
+                    # until that handshake finishes so an eager click cannot
+                    # create a run under the soon-to-be-replaced session.
+                    interactive=False,
                     elem_id="guided-action",
                 )
                 status = gr.Markdown(initial_status, elem_id="app-status")
@@ -818,6 +872,9 @@ def build_app(
                     value=default_steps,
                     step=1,
                     label=text(language, "steps"),
+                    info=default_steps_info,
+                    interactive=default_recipe_interactive,
+                    elem_id="steps-control",
                     elem_classes="studio-field",
                 )
                 guidance = gr.Slider(
@@ -826,6 +883,9 @@ def build_app(
                     value=default_guidance,
                     step=0.5,
                     label=text(language, "guidance"),
+                    info=default_guidance_info,
+                    interactive=default_recipe_interactive,
+                    elem_id="guidance-control",
                     elem_classes="studio-field",
                 )
                 variation = gr.Radio(
@@ -972,14 +1032,33 @@ def build_app(
             show_progress="hidden",
         )
 
-        def run_explore(*values: Any) -> tuple[Any, ...]:
+        def run_explore(operation_id: str, *values: Any) -> tuple[Any, ...]:
             try:
-                response = controller.explore(*_generation_args_for_view(values))
+                args = _generation_args_for_view(values)
+                response = controller.explore(
+                    args[0],
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4],
+                    args[5],
+                    args[6],
+                    args[7],
+                    args[8],
+                    args[9],
+                    args[10],
+                    args[11],
+                    args[12],
+                    operation_id=operation_id,
+                )
             except StudioJobCancelled:
                 return _cancelled_response_values(gr, values[0])
             except StudioAppError as exc:
                 raise gr.Error(str(exc)) from exc
-            return _response_values(gr, response)
+            else:
+                return _response_values(gr, response)
+            finally:
+                controller.clear_operation(values[0], operation_id)
 
         generation_ui_outputs = [
             status,
@@ -990,6 +1069,7 @@ def build_app(
             retry_button,
             replay_button,
         ]
+        generation_start_outputs = [generation_operation_id, *generation_ui_outputs]
         recovery_outputs = [
             app_state,
             source_preview,
@@ -1006,12 +1086,21 @@ def build_app(
             refine_submit,
             retry_button,
             replay_button,
+            simple_model_stop_button,
+            simple_model_button,
+            model_stop_button,
+            model_button,
             language_nav,
             view_nav,
             workbench,
             advanced_rail,
             guide_panel,
         ]
+
+        def bind_browser_tab(state_value: Mapping[str, Any]) -> dict[str, Any]:
+            """Validate the tab-scoped session id supplied by load-time JS."""
+
+            return AppState.from_payload(state_value).payload()
 
         def recover_browser_session(
             state_value: Mapping[str, Any],
@@ -1020,6 +1109,7 @@ def build_app(
         ) -> tuple[Any, ...]:
             state = AppState.from_payload(state_value)
             operation = controller.operation_state(state)
+            operation_kind = controller.operation_kind(state)
             nav_updates = (
                 gr.update(value=state.language),
                 gr.update(value=state.view),
@@ -1045,11 +1135,26 @@ def build_app(
                     gr.update(),
                     gr.update(),
                     gr.update(),
-                    gr.update(visible=True, interactive=True),
+                    gr.update(
+                        visible=operation_kind == "generation",
+                        interactive=(
+                            operation_kind == "generation" and operation == "running"
+                        ),
+                    ),
                     gr.update(interactive=False),
                     gr.update(interactive=False),
                     gr.update(interactive=False),
                     gr.update(interactive=False),
+                    gr.update(interactive=False),
+                    gr.update(
+                        visible=operation_kind == "model",
+                        interactive=operation_kind == "model" and operation == "running",
+                    ),
+                    gr.update(interactive=False),
+                    gr.update(
+                        visible=operation_kind == "model",
+                        interactive=operation_kind == "model" and operation == "running",
+                    ),
                     gr.update(interactive=False),
                     *nav_updates,
                 )
@@ -1074,6 +1179,10 @@ def build_app(
                     gr.update(interactive=True),
                     gr.update(interactive=True),
                     gr.update(interactive=True),
+                    gr.update(interactive=True),
+                    gr.update(visible=False),
+                    gr.update(interactive=True),
+                    gr.update(visible=False),
                     gr.update(interactive=True),
                     *nav_updates,
                 )
@@ -1114,13 +1223,18 @@ def build_app(
                 gr.update(interactive=True),
                 gr.update(interactive=True),
                 gr.update(interactive=True),
+                gr.update(visible=False),
+                gr.update(interactive=True),
+                gr.update(visible=False),
+                gr.update(interactive=True),
                 *nav_updates,
             )
 
         def begin_generation(state_value: Mapping[str, Any]) -> tuple[Any, ...]:
             state = AppState.from_payload(state_value)
-            controller.begin_operation(state)
+            operation_id = controller.start_operation(state)
             return (
+                operation_id,
                 text(state.language, "status_generating"),
                 gr.update(visible=True, interactive=True),
                 gr.update(interactive=False),
@@ -1131,7 +1245,16 @@ def build_app(
             )
 
         def finish_generation(state_value: Mapping[str, Any]) -> tuple[Any, ...]:
-            controller.clear_operation(state_value)
+            if controller.operation_state(state_value) != "idle":
+                return (
+                    gr.update(),
+                    gr.update(visible=True, interactive=True),
+                    gr.update(interactive=False),
+                    gr.update(interactive=False),
+                    gr.update(interactive=False),
+                    gr.update(interactive=False),
+                    gr.update(interactive=False),
+                )
             return (
                 gr.update(),
                 gr.update(visible=False),
@@ -1161,13 +1284,13 @@ def build_app(
         explore_start = explore_button.click(
             begin_generation,
             inputs=[app_state],
-            outputs=generation_ui_outputs,
+            outputs=generation_start_outputs,
             queue=False,
             show_progress="hidden",
         )
         explore_event = explore_start.then(
             run_explore,
-            inputs=generation_inputs,
+            inputs=[generation_operation_id, *generation_inputs],
             outputs=response_outputs,
             concurrency_id="generation",
             concurrency_limit=1,
@@ -1311,6 +1434,7 @@ def build_app(
         )
 
         def refine_study(
+            operation_id: str,
             state_value: Mapping[str, Any],
             strength: str,
             lock_values: Sequence[str],
@@ -1322,17 +1446,21 @@ def build_app(
                     strength,
                     lock_values,
                     instruction,
+                    operation_id,
                 )
             except StudioJobCancelled:
                 return _cancelled_response_values(gr, state_value)
             except StudioAppError as exc:
                 raise gr.Error(str(exc)) from exc
-            return _response_values(gr, response)
+            else:
+                return _response_values(gr, response)
+            finally:
+                controller.clear_operation(state_value, operation_id)
 
         refine_start = refine_submit.click(
             begin_generation,
             inputs=[app_state],
-            outputs=generation_ui_outputs,
+            outputs=generation_start_outputs,
             queue=False,
             show_progress="hidden",
         )
@@ -1344,7 +1472,13 @@ def build_app(
         )
         refine_event = refine_start.then(
             refine_study,
-            inputs=[app_state, variation, locks, refinement_instruction],
+            inputs=[
+                generation_operation_id,
+                app_state,
+                variation,
+                locks,
+                refinement_instruction,
+            ],
             outputs=response_outputs,
             concurrency_id="generation",
             concurrency_limit=1,
@@ -1364,25 +1498,31 @@ def build_app(
             show_progress="hidden",
         )
 
-        def retry_study(state_value: Mapping[str, Any]) -> tuple[Any, ...]:
+        def retry_study(
+            operation_id: str,
+            state_value: Mapping[str, Any],
+        ) -> tuple[Any, ...]:
             try:
-                response = controller.try_again(state_value)
+                response = controller.try_again(state_value, operation_id)
             except StudioJobCancelled:
                 return _cancelled_response_values(gr, state_value)
             except StudioAppError as exc:
                 raise gr.Error(str(exc)) from exc
-            return _response_values(gr, response)
+            else:
+                return _response_values(gr, response)
+            finally:
+                controller.clear_operation(state_value, operation_id)
 
         retry_start = retry_button.click(
             begin_generation,
             inputs=[app_state],
-            outputs=generation_ui_outputs,
+            outputs=generation_start_outputs,
             queue=False,
             show_progress="hidden",
         )
         retry_event = retry_start.then(
             retry_study,
-            inputs=[app_state],
+            inputs=[generation_operation_id, app_state],
             outputs=response_outputs,
             concurrency_id="generation",
             concurrency_limit=1,
@@ -1412,26 +1552,37 @@ def build_app(
         )
 
         def replay_study(
-            state_value: Mapping[str, Any], path: str | None, preset_value: str
+            operation_id: str,
+            state_value: Mapping[str, Any],
+            path: str | None,
+            preset_value: str,
         ) -> tuple[Any, ...]:
             try:
-                response = controller.replay_manifest(state_value, path, preset_value)
+                response = controller.replay_manifest(
+                    state_value,
+                    path,
+                    preset_value,
+                    operation_id,
+                )
             except StudioJobCancelled:
                 return _cancelled_response_values(gr, state_value)
             except StudioAppError as exc:
                 raise gr.Error(str(exc)) from exc
-            return _response_values(gr, response)
+            else:
+                return _response_values(gr, response)
+            finally:
+                controller.clear_operation(state_value, operation_id)
 
         replay_start = replay_button.click(
             begin_generation,
             inputs=[app_state],
-            outputs=generation_ui_outputs,
+            outputs=generation_start_outputs,
             queue=False,
             show_progress="hidden",
         )
         replay_event = replay_start.then(
             replay_study,
-            inputs=[app_state, manifest_file, preset],
+            inputs=[generation_operation_id, app_state, manifest_file, preset],
             outputs=response_outputs,
             concurrency_id="generation",
             concurrency_limit=1,
@@ -1526,6 +1677,13 @@ def build_app(
 
         def clear_overrides(state_value: Mapping[str, Any]) -> tuple[Any, ...]:
             state = AppState.from_payload(state_value).replace(advanced_overrides=False)
+            (
+                reset_steps,
+                reset_guidance,
+                reset_recipe_interactive,
+                reset_steps_info,
+                reset_guidance_info,
+            ) = _recipe_control_state(state.language, default_preset)
             return (
                 state.payload(),
                 default_preset,
@@ -1547,8 +1705,16 @@ def build_app(
                     interactive=default_seed_mode != "locked",
                 ),
                 default_canny,
-                default_steps,
-                default_guidance,
+                gr.update(
+                    value=reset_steps,
+                    interactive=reset_recipe_interactive,
+                    info=reset_steps_info,
+                ),
+                gr.update(
+                    value=reset_guidance,
+                    interactive=reset_recipe_interactive,
+                    info=reset_guidance_info,
+                ),
                 "subtle",
                 list(DEFAULT_LOCKS),
                 default_preset,
@@ -1588,9 +1754,7 @@ def build_app(
             show_progress="hidden",
         )
 
-        def sync_simple_model(
-            state_value: Mapping[str, Any], value: str
-        ) -> tuple[Any, ...]:
+        def sync_simple_model(state_value: Mapping[str, Any], value: str) -> tuple[Any, ...]:
             lang = AppState.from_payload(state_value).language
             _selected, plan = _preset_selection(lang, value, controller)
             return gr.update(value=plan), ""
@@ -1606,15 +1770,30 @@ def build_app(
         def sync_generation_preset(state_value: Mapping[str, Any], value: str) -> tuple[Any, ...]:
             lang = AppState.from_payload(state_value).language
             selected, plan = _preset_selection(lang, value, controller)
-            canny_value, step_value, guidance_value = _preset_generation_defaults(selected)
+            canny_value = _preset_generation_defaults(selected)[0]
+            (
+                step_value,
+                guidance_value,
+                recipe_interactive,
+                steps_info,
+                guidance_info,
+            ) = _recipe_control_state(lang, selected)
             return (
                 gr.update(value=selected),
                 gr.update(value=plan),
                 True,
                 "",
                 gr.update(value=canny_value, info=_canny_info(lang, selected)),
-                gr.update(value=step_value),
-                gr.update(value=guidance_value),
+                gr.update(
+                    value=step_value,
+                    interactive=recipe_interactive,
+                    info=steps_info,
+                ),
+                gr.update(
+                    value=guidance_value,
+                    interactive=recipe_interactive,
+                    info=guidance_info,
+                ),
             )
 
         preset.input(
@@ -1636,15 +1815,30 @@ def build_app(
         def sync_model_preset(state_value: Mapping[str, Any], value: str) -> tuple[Any, ...]:
             lang = AppState.from_payload(state_value).language
             selected, plan = _preset_selection(lang, value, controller)
-            canny_value, step_value, guidance_value = _preset_generation_defaults(selected)
+            canny_value = _preset_generation_defaults(selected)[0]
+            (
+                step_value,
+                guidance_value,
+                recipe_interactive,
+                steps_info,
+                guidance_info,
+            ) = _recipe_control_state(lang, selected)
             return (
                 gr.update(value=selected),
                 gr.update(value=plan),
                 True,
                 "",
                 gr.update(value=canny_value, info=_canny_info(lang, selected)),
-                gr.update(value=step_value),
-                gr.update(value=guidance_value),
+                gr.update(
+                    value=step_value,
+                    interactive=recipe_interactive,
+                    info=steps_info,
+                ),
+                gr.update(
+                    value=guidance_value,
+                    interactive=recipe_interactive,
+                    info=guidance_info,
+                ),
             )
 
         model_choice.input(
@@ -1664,7 +1858,10 @@ def build_app(
         )
 
         def prepare_model(
-            state_value: Mapping[str, Any], preset_value: str, confirmed: bool
+            operation_id: str,
+            state_value: Mapping[str, Any],
+            preset_value: str,
+            confirmed: bool,
         ) -> str:
             state = AppState.from_payload(state_value)
             concrete_preset, _ = _preset_selection(state.language, preset_value)
@@ -1674,18 +1871,22 @@ def build_app(
                     confirmed,
                     state.language,
                     state,
+                    operation_id,
                 )
             except StudioJobCancelled:
                 return text(state.language, "status_stopped")
             except StudioAppError as exc:
                 raise gr.Error(str(exc)) from exc
+            finally:
+                controller.clear_operation(state, operation_id)
 
         def begin_model_download(
             state_value: Mapping[str, Any],
         ) -> tuple[Any, ...]:
             state = AppState.from_payload(state_value)
-            controller.begin_operation(state)
+            operation_id = controller.start_operation(state, kind="model")
             return (
+                operation_id,
                 text(state.language, "status_downloading"),
                 gr.update(visible=True, interactive=True),
                 gr.update(interactive=False),
@@ -1695,13 +1896,19 @@ def build_app(
             state_value: Mapping[str, Any],
             preset_value: str,
         ) -> tuple[Any, ...]:
-            controller.clear_operation(state_value)
             state = AppState.from_payload(state_value)
             _selected, current_plan = _preset_selection(
                 state.language,
                 preset_value,
                 controller,
             )
+            if controller.operation_state(state) != "idle":
+                return (
+                    gr.update(),
+                    gr.update(visible=True, interactive=True),
+                    gr.update(interactive=False),
+                    gr.update(value=current_plan),
+                )
             return (
                 gr.update(),
                 gr.update(visible=False),
@@ -1712,13 +1919,18 @@ def build_app(
         model_start = model_button.click(
             begin_model_download,
             inputs=[app_state],
-            outputs=[model_status, model_stop_button, model_button],
+            outputs=[
+                model_operation_id,
+                model_status,
+                model_stop_button,
+                model_button,
+            ],
             queue=False,
             show_progress="hidden",
         )
         model_event = model_start.then(
             prepare_model,
-            inputs=[app_state, preset, model_confirm],
+            inputs=[model_operation_id, app_state, preset, model_confirm],
             outputs=[model_status],
             concurrency_id="model-download",
             concurrency_limit=1,
@@ -1727,21 +1939,29 @@ def build_app(
         model_event.then(
             finish_model_download,
             inputs=[app_state, preset],
-            outputs=[model_status, model_stop_button, model_button, model_plan],
+            outputs=[
+                model_status,
+                model_stop_button,
+                model_button,
+                model_plan,
+            ],
             queue=False,
             show_progress="hidden",
         )
 
         def prepare_simple_model(
-            state_value: Mapping[str, Any], model_value: str
+            operation_id: str,
+            state_value: Mapping[str, Any],
+            model_value: str,
         ) -> str:
             # The button itself is the explicit size-and-license confirmation.
-            return prepare_model(state_value, model_value, True)
+            return prepare_model(operation_id, state_value, model_value, True)
 
         simple_model_start = simple_model_button.click(
             begin_model_download,
             inputs=[app_state],
             outputs=[
+                model_operation_id,
                 simple_model_status,
                 simple_model_stop_button,
                 simple_model_button,
@@ -1751,7 +1971,7 @@ def build_app(
         )
         simple_model_event = simple_model_start.then(
             prepare_simple_model,
-            inputs=[app_state, simple_model_choice],
+            inputs=[model_operation_id, app_state, simple_model_choice],
             outputs=[simple_model_status],
             concurrency_id="model-download",
             concurrency_limit=1,
@@ -1774,15 +1994,15 @@ def build_app(
             state_value: Mapping[str, Any],
         ) -> tuple[Any, ...]:
             message = controller.cancel_operation(state_value)
-            controller.clear_operation(state_value)
+            backend_idle = controller.operation_state(state_value) == "idle"
             return (
                 message,
-                gr.update(visible=False),
-                gr.update(interactive=True),
-                gr.update(interactive=True),
-                gr.update(interactive=True),
-                gr.update(interactive=True),
-                gr.update(interactive=True),
+                gr.update(visible=not backend_idle, interactive=False),
+                gr.update(interactive=backend_idle),
+                gr.update(interactive=backend_idle),
+                gr.update(interactive=backend_idle),
+                gr.update(interactive=backend_idle),
+                gr.update(interactive=backend_idle),
             )
 
         stop_button.click(
@@ -1803,17 +2023,21 @@ def build_app(
             state_value: Mapping[str, Any],
         ) -> tuple[Any, ...]:
             message = controller.cancel_operation(state_value)
-            controller.clear_operation(state_value)
+            backend_idle = controller.operation_state(state_value) == "idle"
             return (
                 message,
-                gr.update(visible=False),
-                gr.update(interactive=True),
+                gr.update(visible=not backend_idle, interactive=False),
+                gr.update(interactive=backend_idle),
             )
 
         model_stop_button.click(
             stop_model_download,
             inputs=[app_state],
-            outputs=[model_status, model_stop_button, model_button],
+            outputs=[
+                model_status,
+                model_stop_button,
+                model_button,
+            ],
             cancels=[model_event],
             queue=False,
             show_progress="hidden",
@@ -1899,6 +2123,13 @@ def build_app(
         ) -> tuple[Any, ...]:
             lang = normalize_language(selected_language)
             state = AppState.from_payload(state_value).replace(language=lang)
+            (
+                _step_value,
+                _guidance_value,
+                recipe_interactive,
+                steps_info,
+                guidance_info,
+            ) = _recipe_control_state(lang, selected_preset)
             active = controller.localize_active_run(state, lang)
             if active is not None:
                 state = AppState.from_payload(active.state)
@@ -1930,7 +2161,7 @@ def build_app(
                 gr.update(value=text(lang, "model_prepare")),
                 gr.update(value=text(lang, "stop")),
                 gr.update(value=text(lang, "explore")),
-                gr.update(value=text(lang, "guided")),
+                gr.update(value=text(lang, "guided"), interactive=guided_available),
                 gr.update(label=text(lang, "source")),
                 gr.update(label=text(lang, "selected")),
                 gr.update(value=_directions_heading(lang)),
@@ -1959,8 +2190,16 @@ def build_app(
                     label=text(lang, "canny"),
                     info=_canny_info(lang, selected_preset),
                 ),
-                gr.update(label=text(lang, "steps")),
-                gr.update(label=text(lang, "guidance")),
+                gr.update(
+                    label=text(lang, "steps"),
+                    info=steps_info,
+                    interactive=recipe_interactive,
+                ),
+                gr.update(
+                    label=text(lang, "guidance"),
+                    info=guidance_info,
+                    interactive=recipe_interactive,
+                ),
                 gr.update(label=text(lang, "variation"), choices=_variation_choices(lang)),
                 gr.update(label=text(lang, "locks"), choices=_lock_choices(lang)),
                 gr.update(value=f"### {text(lang, 'manifest')}"),
@@ -2007,7 +2246,15 @@ def build_app(
             show_progress="hidden",
         )
 
-        browser_load = demo.load(
+        browser_tab_bind = demo.load(
+            bind_browser_tab,
+            inputs=[app_state],
+            outputs=[app_state],
+            js=BROWSER_TAB_SESSION_JS,
+            queue=False,
+            show_progress="hidden",
+        )
+        browser_load = browser_tab_bind.then(
             lambda state_value: recover_browser_session(state_value, True),
             inputs=[app_state],
             outputs=recovery_outputs,
@@ -2057,7 +2304,11 @@ def build_app(
     demo._studio_choose_model_for_guided = choose_model_for_guided
     demo._studio_begin_generation = begin_generation
     demo._studio_stop_generation = stop_generation
+    demo._studio_begin_model_download = begin_model_download
+    demo._studio_finish_model_download = finish_model_download
+    demo._studio_stop_model_download = stop_model_download
     demo._studio_restore_gallery_after_preview = restore_gallery_after_preview
+    demo._studio_bind_browser_tab = bind_browser_tab
     demo._studio_recover_browser_session = recover_browser_session
     demo._studio_launch_kwargs = {
         "server_name": "127.0.0.1",

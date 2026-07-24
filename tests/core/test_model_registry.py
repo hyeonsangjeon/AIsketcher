@@ -43,13 +43,25 @@ def test_registry_contains_the_2026_refresh_profiles() -> None:
 
 
 def test_every_artifact_has_immutable_revision_and_verified_payloads() -> None:
+    runtime_verified = {
+        "flux2-klein-4b",
+        "flux2-small-decoder",
+        "sdxl-base-1.0",
+        "sdxl-canny-small",
+        "sdxl-canny-quality",
+    }
     for key, artifact in MODEL_ARTIFACTS.items():
         assert key == artifact.artifact_id
         assert re.fullmatch(r"[0-9a-f]{40}", artifact.revision)
-        assert artifact.hash_policy is HashPolicy.PINNED_COMMIT_AND_LFS_SHA256
+        expected_policy = (
+            HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256
+            if key in runtime_verified
+            else HashPolicy.PINNED_COMMIT_AND_LFS_SHA256
+        )
+        assert artifact.hash_policy is expected_policy
         assert artifact.download_bytes == sum(item.size_bytes for item in artifact.files)
         assert all(re.fullmatch(r"[0-9a-f]{64}", item.sha256) for item in artifact.files)
-        assert all(item.path.endswith((".safetensors", "tokenizer.json")) for item in artifact.files)
+        assert all(not item.path.startswith("/") for item in artifact.files)
         assert artifact.model_card_url.endswith(artifact.revision)
 
 
@@ -109,7 +121,7 @@ def test_structural_profile_pins_the_reviewed_2602_lite_adapter() -> None:
 
 def test_profiles_expose_hardware_and_download_expectations() -> None:
     flux = get_model_profile("flux2-klein-4b")
-    assert flux.download_bytes == 16_225_156_608
+    assert flux.download_bytes == 16_229_653_713
     assert (flux.minimum_vram_gb, flux.recommended_vram_gb) == (13, 16)
     assert flux.status is ModelStatus.READY
     assert InputMode.SKETCH in flux.input_modes
@@ -124,10 +136,18 @@ def test_profiles_expose_hardware_and_download_expectations() -> None:
     )
     decoder = MODEL_ARTIFACTS["flux2-small-decoder"]
     assert decoder.revision == "a3efc24f613ef42d9428af62fdbd6f5fd8856c4a"
-    assert decoder.download_bytes == 249_521_340
+    assert decoder.download_bytes == 249_522_182
     assert (
-        decoder.files[0].sha256
+        decoder.files[1].sha256
         == "d8d52ba036475f5fb07c8b435e176d3d97ebfa82f0d1a1c317f9cc1e25bd013b"
+    )
+    quality_controlnet = MODEL_ARTIFACTS["sdxl-canny-quality"]
+    assert quality_controlnet.model_id == "diffusers/controlnet-canny-sdxl-1.0"
+    assert quality_controlnet.revision == "eb115a19a10d14909256db740ed109532ab1483c"
+    assert quality_controlnet.files[1].size_bytes == 2_502_139_136
+    assert (
+        quality_controlnet.files[1].sha256
+        == "b2e7d3921058a442cc80430d1ec8847f42599c705e2451c95e77cf4dcf8d6c25"
     )
 
     qwen = get_model_profile("qwen-image-edit-quality")
@@ -136,7 +156,7 @@ def test_profiles_expose_hardware_and_download_expectations() -> None:
     assert qwen.status is ModelStatus.PRO_QUALITY
 
     legacy = get_model_profile("sdxl-canny-legacy")
-    assert legacy.download_bytes == 7_258_248_609
+    assert legacy.download_bytes == 7_261_425_974
     assert legacy.status is ModelStatus.LEGACY
 
 

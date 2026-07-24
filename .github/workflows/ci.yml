@@ -43,6 +43,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -61,6 +63,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -70,6 +74,30 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
       - name: Run Studio tests
         run: python -m pytest tests/app
+
+  studio-browser:
+    name: Studio / Browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install Studio browser test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run Studio browser regressions
+        env:
+          AISKETCHER_BROWSER_E2E: "1"
+        run: python -m pytest tests/e2e/test_studio_browser.py
 
   docs:
     name: Documentation / strict

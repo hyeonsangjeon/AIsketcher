@@ -2,35 +2,82 @@
 
 Korean text is not sent to an image model under an assumption that the model
 understands it.  Applications may inject a translator, or explicitly construct
-the local Marian adapter below.  Constructing either the normalizer or the
+the local M2M100 adapter below.  Constructing either the normalizer or the
 adapter never downloads model weights.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import re
+import stat
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from .errors import (
     AIsketcherError,
+    IntegrityError,
     ModelUnavailableError,
     OptionalDependencyError,
     ValidationError,
 )
+from .model_registry import VerifiedFile
 
-MARIAN_KO_EN_MODEL_ID = "Helsinki-NLP/opus-mt-ko-en"
-MARIAN_KO_EN_REVISION = "e42d1f41b66194e6d10512f8a27bebc1f4f5097e"
-MARIAN_KO_EN_DOWNLOAD_BYTES = 315_464_658
-MARIAN_KO_EN_WEIGHTS_SHA256 = (
-    "4b2209fbd0c58a05e9c4b818b49b6b7e54406cdee93acdccf840752a94fe34f4"
+M2M100_KO_EN_MODEL_ID = "facebook/m2m100_418M"
+M2M100_KO_EN_REVISION = "55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636"
+M2M100_KO_EN_FILES = (
+    VerifiedFile(
+        path="config.json",
+        size_bytes=908,
+        sha256="df0ae43e4e4b0d7e3c97b7f447857a70ef6b6a2aa1f145cedbcc730d95f67134",
+    ),
+    VerifiedFile(
+        path="generation_config.json",
+        size_bytes=233,
+        sha256="aed76366507333ddbb8bd49960f23c82fe6446b3319a46a54befdb45324ccf61",
+    ),
+    VerifiedFile(
+        path="pytorch_model.bin",
+        size_bytes=1_935_796_948,
+        sha256="d907ea45e4e4b9db163382a6674f6218b3c59566fe06d77f4055c208b4e87ed1",
+    ),
+    VerifiedFile(
+        path="sentencepiece.bpe.model",
+        size_bytes=2_423_393,
+        sha256="d8f7c76ed2a5e0822be39f0a4f95a55eb19c78f4593ce609e2edbc2aea4d380a",
+    ),
+    VerifiedFile(
+        path="special_tokens_map.json",
+        size_bytes=1_140,
+        sha256="c1a4f86c3874d279ae1b2a05162858db5dd6c61665d84223ed886cbcff08fda6",
+    ),
+    VerifiedFile(
+        path="tokenizer_config.json",
+        size_bytes=298,
+        sha256="a53e6aa83da0b82565ed90c3849056307a9453843322ac5b8439ec4b9497fe48",
+    ),
+    VerifiedFile(
+        path="vocab.json",
+        size_bytes=3_708_092,
+        sha256="b6e77e474aeea8f441363aca7614317c06381f3eacfe10fb9856d5081d1074cc",
+    ),
 )
+M2M100_KO_EN_DOWNLOAD_BYTES = sum(
+    required.size_bytes for required in M2M100_KO_EN_FILES
+)
+M2M100_KO_EN_WEIGHTS_SHA256 = next(
+    required.sha256
+    for required in M2M100_KO_EN_FILES
+    if required.path == "pytorch_model.bin"
+)
+M2M100_KO_EN_MAX_INPUT_TOKENS = 1_024
 
 _COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 _HANGUL_PATTERN = re.compile(
@@ -39,6 +86,40 @@ _HANGUL_PATTERN = re.compile(
 _MAX_PROMPT_LENGTH = 10_000
 _SAFETENSORS_CONVERSION_ENV = "DISABLE_SAFETENSORS_CONVERSION"
 _TRANSFORMERS_LOAD_ENV_LOCK = threading.Lock()
+_WEIGHTS_HASH_CHUNK_BYTES = 8 * 1024 * 1024
+_VERIFIED_TRANSLATOR_FILES: set[
+    tuple[str, str, int, int, int, int, int, int]
+] = set()
+_WEIGHTS_VERIFICATION_LOCK = threading.Lock()
+
+# Apply longer phrases first so a future shorter entry can never consume part
+# of a more specific visual-design term. The source is segmented around these
+# terms: M2M100 sees only Korean-source segments, while reviewed production
+# vocabulary is assembled into the translated result without being tokenized
+# under ``src_lang="ko"``.
+_KOREAN_VISUAL_DESIGN_TERMINOLOGY = tuple(
+    sorted(
+        (
+            ("겹겹이 자른 종이 공예", "layered cut-paper craft"),
+            ("스튜디오 조명", "studio lighting"),
+            ("미니어처", "miniature"),
+            ("판타지", "fantasy"),
+            ("마스코트", "mascot"),
+            ("코발트", "cobalt"),
+            ("주홍", "vermilion"),
+            ("노랑", "yellow"),
+            ("금색", "gold"),
+            ("시안", "cyan"),
+        ),
+        key=lambda item: (-len(item[0]), item[0]),
+    )
+)
+_KOREAN_VISUAL_DESIGN_TRANSLATIONS = dict(_KOREAN_VISUAL_DESIGN_TERMINOLOGY)
+_KOREAN_VISUAL_DESIGN_PATTERN = re.compile(
+    "|".join(
+        re.escape(korean) for korean, _english in _KOREAN_VISUAL_DESIGN_TERMINOLOGY
+    )
+)
 
 DESIGN_EDIT_PROMPT_TEMPLATE = (
     "Design image editing brief:\n"
@@ -55,12 +136,11 @@ def _disable_transformers_conversion_pr() -> Iterator[None]:
     """Prevent Transformers from fetching an unpinned conversion PR.
 
     Current Transformers releases may start a background SafeTensors conversion
-    download after loading a repository that only publishes PyTorch weights at
-    the requested commit. That helper resolves ``refs/pr/*`` independently of
-    the caller's immutable revision, doubles this Marian checkpoint's transfer,
-    and outlives ``from_pretrained``. The upstream opt-out environment variable
-    is process-global, so guard the short load region and restore its previous
-    value exactly.
+    download after loading a repository that publishes PyTorch weights at the
+    requested commit. That helper resolves ``refs/pr/*`` independently of the
+    caller's immutable revision and outlives ``from_pretrained``. The upstream
+    opt-out environment variable is process-global, so guard the short load
+    region and restore its previous value exactly.
     """
 
     with _TRANSFORMERS_LOAD_ENV_LOCK:
@@ -211,8 +291,8 @@ def normalize_prompt(
     """Normalize a user prompt without implicit translation or network access.
 
     A translator is called only when Hangul is present.  Callers that want the
-    bundled Marian implementation must instantiate
-    :class:`MarianKoreanEnglishTranslator` themselves, making the cache/network
+    bundled M2M100 implementation must instantiate
+    :class:`M2M100KoreanEnglishTranslator` themselves, making the cache/network
     policy explicit.
     """
 
@@ -245,7 +325,7 @@ def normalize_prompt(
                 "Korean text was detected, but no translator was configured. "
                 "The original prompt was preserved and was not sent to the image "
                 "model. Inject a translator or install aisketcher[translate] and "
-                "explicitly load the pinned local Marian adapter."
+                "explicitly load the pinned local M2M100 adapter."
             ),
         )
 
@@ -276,8 +356,8 @@ def normalize_prompt(
     )
 
 
-class MarianKoreanEnglishTranslator:
-    """Lazy local Marian Korean-to-English adapter.
+class M2M100KoreanEnglishTranslator:
+    """Lazy local M2M100 Korean-to-English adapter.
 
     The default is cache-only.  Passing ``local_files_only=False`` is an
     explicit opt-in to Hugging Face Hub access.  The revision must always be an
@@ -287,8 +367,8 @@ class MarianKoreanEnglishTranslator:
     def __init__(
         self,
         *,
-        model_id: str = MARIAN_KO_EN_MODEL_ID,
-        revision: str = MARIAN_KO_EN_REVISION,
+        model_id: str = M2M100_KO_EN_MODEL_ID,
+        revision: str = M2M100_KO_EN_REVISION,
         local_files_only: bool = True,
         cache_dir: str | None = None,
         max_new_tokens: int = 512,
@@ -297,11 +377,11 @@ class MarianKoreanEnglishTranslator:
         revision = revision.strip().lower()
         if not model_id or "/" not in model_id:
             raise ValidationError(
-                "Marian model_id must be a non-empty namespaced repository id"
+                "M2M100 model_id must be a non-empty namespaced repository id"
             )
         if not _COMMIT_PATTERN.fullmatch(revision):
             raise ValidationError(
-                "Marian revision must be an immutable 40-character commit SHA"
+                "M2M100 revision must be an immutable 40-character commit SHA"
             )
         if not isinstance(local_files_only, bool):
             raise ValidationError("local_files_only must be a boolean")
@@ -315,7 +395,15 @@ class MarianKoreanEnglishTranslator:
         self.model_id = model_id
         self.revision = revision
         self.local_files_only = local_files_only
-        self.cache_dir = cache_dir
+        if cache_dir is None:
+            self.cache_dir = None
+            self._managed_cache_root: Path | None = None
+        else:
+            managed_cache_root = Path(
+                os.path.abspath(os.fspath(Path(cache_dir).expanduser()))
+            )
+            self.cache_dir = os.fspath(managed_cache_root)
+            self._managed_cache_root = managed_cache_root
         self.max_new_tokens = max_new_tokens
         self._components: tuple[Any, Any] | None = None
         self._load_lock = threading.Lock()
@@ -332,27 +420,50 @@ class MarianKoreanEnglishTranslator:
     def translate(self, text: str) -> str:
         source = _validated_prompt(text, name="text")
         tokenizer, model = self._load_components()
-        encoded = tokenizer(
-            [source],
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-        )
-        if not isinstance(encoded, Mapping):
-            raise ValidationError("Marian tokenizer returned an invalid input batch")
-        generated = model.generate(
-            **dict(encoded),
-            max_new_tokens=self.max_new_tokens,
-        )
-        decoded = tokenizer.batch_decode(generated, skip_special_tokens=True)
-        if (
-            not isinstance(decoded, list)
-            or not decoded
-            or not isinstance(decoded[0], str)
-            or not decoded[0].strip()
+        encoded = _encode_m2m100_source(tokenizer, source)
+        _enforce_m2m100_input_limit(encoded)
+        target_language_id = tokenizer.get_lang_id("en")
+        if isinstance(target_language_id, bool) or not isinstance(
+            target_language_id, int
         ):
-            raise ValidationError("Marian translator returned an empty translation")
-        return decoded[0].strip()
+            raise ValidationError("M2M100 tokenizer returned an invalid English ID")
+
+        segments = _segment_korean_visual_design_terminology(source)
+        if len(segments) == 1 and segments[0] == (source, None):
+            return _generate_m2m100_translation(
+                tokenizer,
+                model,
+                encoded,
+                max_new_tokens=self.max_new_tokens,
+                target_language_id=target_language_id,
+            )
+
+        translated_segments: list[str] = []
+        for segment, reviewed_translation in segments:
+            if reviewed_translation is not None:
+                translated_segments.append(reviewed_translation)
+                continue
+            leading = segment[: len(segment) - len(segment.lstrip())]
+            trailing = segment[len(segment.rstrip()) :]
+            translatable = segment.strip()
+            if not translatable or not contains_hangul(translatable):
+                translated_segments.append(segment)
+                continue
+            segment_encoded = _encode_m2m100_source(tokenizer, translatable)
+            _enforce_m2m100_input_limit(segment_encoded)
+            translated = _generate_m2m100_translation(
+                tokenizer,
+                model,
+                segment_encoded,
+                max_new_tokens=self.max_new_tokens,
+                target_language_id=target_language_id,
+            )
+            translated_segments.append(f"{leading}{translated}{trailing}")
+
+        translated_prompt = "".join(translated_segments).strip()
+        if not translated_prompt:
+            raise ValidationError("M2M100 translator returned an empty translation")
+        return translated_prompt
 
     def prepare(
         self,
@@ -376,7 +487,7 @@ class MarianKoreanEnglishTranslator:
         if not confirm:
             raise ValidationError(
                 "Translator setup requires confirm=True after displaying its "
-                "download size and Apache-2.0 license."
+                "download size and MIT license."
             )
         events = tuple(
             event
@@ -416,8 +527,10 @@ class MarianKoreanEnglishTranslator:
             cached = self._cached_components()
             if cached is not None:
                 return cached
+            self._assert_managed_cache_boundary()
             try:
                 transformers = importlib.import_module("transformers")
+                huggingface_hub = importlib.import_module("huggingface_hub")
             except ImportError as exc:
                 raise OptionalDependencyError(
                     "Local Korean translation requires the optional translation "
@@ -433,14 +546,70 @@ class MarianKoreanEnglishTranslator:
             if self.cache_dir is not None:
                 load_options["cache_dir"] = self.cache_dir
             try:
-                tokenizer = transformers.AutoTokenizer.from_pretrained(
-                    self.model_id, **load_options
+                if (
+                    self.model_id != M2M100_KO_EN_MODEL_ID
+                    or self.revision != M2M100_KO_EN_REVISION
+                ):
+                    raise IntegrityError(
+                        "No reviewed runtime-file integrity policy exists for "
+                        f"{self.model_id}@{self.revision}."
+                    )
+                snapshot_paths: list[Path] = []
+                for required in M2M100_KO_EN_FILES:
+                    self._assert_managed_cache_boundary()
+                    download_options: dict[str, Any] = {
+                        "repo_id": self.model_id,
+                        "filename": required.path,
+                        "revision": self.revision,
+                        "local_files_only": load_options["local_files_only"],
+                    }
+                    if self.cache_dir is not None:
+                        download_options["cache_dir"] = self.cache_dir
+                    downloaded_path = Path(
+                        huggingface_hub.hf_hub_download(**download_options)
+                    )
+                    self._check_setup_cancelled(should_cancel)
+                    downloaded_path = self._validated_managed_download_path(
+                        downloaded_path,
+                        required=required,
+                    )
+                    _verify_translator_file(
+                        downloaded_path,
+                        required=required,
+                        should_cancel=should_cancel,
+                    )
+                    snapshot_paths.append(downloaded_path)
+                snapshot_dir = snapshot_paths[0].parent
+                if any(path.parent != snapshot_dir for path in snapshot_paths):
+                    raise IntegrityError(
+                        "Pinned M2M100 runtime files did not resolve to one "
+                        "immutable snapshot."
+                    )
+                for required, downloaded_path in zip(
+                    M2M100_KO_EN_FILES,
+                    snapshot_paths,
+                    strict=True,
+                ):
+                    self._validated_managed_download_path(
+                        downloaded_path,
+                        required=required,
+                    )
+                _assert_exact_m2m100_snapshot(
+                    snapshot_dir,
+                    M2M100_KO_EN_FILES,
                 )
-                self._check_setup_cancelled(should_cancel)
                 with _disable_transformers_conversion_pr():
+                    tokenizer = transformers.AutoTokenizer.from_pretrained(
+                        os.fspath(snapshot_dir),
+                        local_files_only=True,
+                        trust_remote_code=False,
+                        src_lang="ko",
+                    )
+                    self._check_setup_cancelled(should_cancel)
                     model = transformers.AutoModelForSeq2SeqLM.from_pretrained(
-                        self.model_id,
-                        **load_options,
+                        os.fspath(snapshot_dir),
+                        local_files_only=True,
+                        trust_remote_code=False,
                         use_safetensors=False,
                         weights_only=True,
                     )
@@ -461,6 +630,151 @@ class MarianKoreanEnglishTranslator:
     def _cached_components(self) -> tuple[Any, Any] | None:
         return self._components
 
+    def _assert_managed_cache_boundary(self) -> None:
+        """Reject a configured translation cache with a symlinked boundary."""
+
+        if self._managed_cache_root is None:
+            return
+        if _path_has_symlink_component(self._managed_cache_root):
+            raise IntegrityError(
+                "Managed M2M100 translation cache boundary cannot contain a symlink."
+            )
+
+    def _validated_managed_download_path(
+        self,
+        downloaded_path: Path,
+        *,
+        required: VerifiedFile,
+    ) -> Path:
+        """Keep Hub writes and loads below the configured translation cache.
+
+        Hugging Face snapshots intentionally expose each file as a symlink to
+        an immutable blob in the same repository cache.  The file symlink is
+        therefore allowed, while the managed cache root, every directory on
+        the snapshot path, and the resolved blob target must remain inside the
+        configured cache.
+        """
+
+        if self._managed_cache_root is None:
+            return downloaded_path
+
+        self._assert_managed_cache_boundary()
+        absolute_path = Path(os.path.abspath(os.fspath(downloaded_path)))
+        try:
+            absolute_path.relative_to(self._managed_cache_root)
+        except ValueError as exc:
+            raise IntegrityError(
+                "Pinned M2M100 runtime file escaped the managed translation "
+                f"cache: {required.path}."
+            ) from exc
+        if _path_has_symlink_component(absolute_path.parent):
+            raise IntegrityError(
+                "Managed M2M100 translation cache directory path cannot contain "
+                f"a symlink: {required.path}."
+            )
+        try:
+            resolved_path = absolute_path.resolve(strict=True)
+            resolved_path.relative_to(self._managed_cache_root)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            raise IntegrityError(
+                "Pinned M2M100 runtime file symlink escaped the managed "
+                f"translation cache: {required.path}."
+            ) from exc
+        return absolute_path
+
+
+def _assert_exact_m2m100_snapshot(
+    snapshot_dir: Path,
+    required_files: tuple[VerifiedFile, ...],
+) -> None:
+    """Reject runtime entries that are not covered by the pinned hash policy."""
+
+    if snapshot_dir.is_symlink() or not snapshot_dir.is_dir():
+        raise IntegrityError("Pinned M2M100 snapshot is not a regular directory.")
+    expected_files = {
+        Path(*required.path.split("/")).as_posix() for required in required_files
+    }
+    expected_directories: set[str] = set()
+    for expected_file in expected_files:
+        parent = Path(expected_file).parent
+        while parent != Path("."):
+            expected_directories.add(parent.as_posix())
+            parent = parent.parent
+    try:
+        entries = tuple(snapshot_dir.rglob("*"))
+    except OSError as exc:
+        raise IntegrityError("Pinned M2M100 snapshot could not be inspected.") from exc
+
+    for entry in entries:
+        try:
+            relative_name = entry.relative_to(snapshot_dir).as_posix()
+        except ValueError as exc:
+            raise IntegrityError(
+                "Pinned M2M100 snapshot entry escaped its directory."
+            ) from exc
+        if relative_name in expected_files:
+            if entry.is_file():
+                continue
+            raise IntegrityError(
+                "Pinned M2M100 runtime entry is not a regular file: "
+                f"{relative_name}."
+            )
+        if (
+            relative_name in expected_directories
+            and entry.is_dir()
+            and not entry.is_symlink()
+        ):
+            continue
+        raise IntegrityError(
+            f"Pinned M2M100 snapshot contains undeclared runtime entry: "
+            f"{relative_name}."
+        )
+
+
+def _encode_m2m100_source(tokenizer: Any, source: str) -> Mapping[str, Any]:
+    encoded = tokenizer(
+        source,
+        return_tensors="pt",
+        truncation=False,
+    )
+    if not isinstance(encoded, Mapping):
+        raise ValidationError("M2M100 tokenizer returned an invalid input batch")
+    return encoded
+
+
+def _enforce_m2m100_input_limit(encoded: Mapping[str, Any]) -> None:
+    input_token_count = _single_input_token_count(encoded.get("input_ids"))
+    if input_token_count > M2M100_KO_EN_MAX_INPUT_TOKENS:
+        raise ValidationError(
+            f"M2M100 input contains {input_token_count:,} tokens; the maximum "
+            f"is {M2M100_KO_EN_MAX_INPUT_TOKENS:,}. Shorten the prompt before "
+            "translation."
+        )
+
+
+def _generate_m2m100_translation(
+    tokenizer: Any,
+    model: Any,
+    encoded: Mapping[str, Any],
+    *,
+    max_new_tokens: int,
+    target_language_id: int,
+) -> str:
+    generated = model.generate(
+        **dict(encoded),
+        max_new_tokens=max_new_tokens,
+        forced_bos_token_id=target_language_id,
+    )
+    decoded = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    if (
+        not isinstance(decoded, list)
+        or not decoded
+        or not isinstance(decoded[0], str)
+        or not decoded[0].strip()
+    ):
+        raise ValidationError("M2M100 translator returned an empty translation")
+    return decoded[0].strip()
+
 
 def _validated_prompt(value: str, *, name: str) -> str:
     if not isinstance(value, str):
@@ -473,6 +787,151 @@ def _validated_prompt(value: str, *, name: str) -> str:
             f"{name} cannot exceed {_MAX_PROMPT_LENGTH:,} characters"
         )
     return normalized
+
+
+def _path_has_symlink_component(path: Path) -> bool:
+    """Fail closed when any existing component of an absolute path is a symlink."""
+
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    current = Path(absolute.anchor)
+    for component in absolute.parts[1:]:
+        current /= component
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+        if stat.S_ISLNK(metadata.st_mode):
+            return True
+    return False
+
+
+def _segment_korean_visual_design_terminology(
+    source: str,
+) -> tuple[tuple[str, str | None], ...]:
+    """Split Korean source text around reviewed visual-design terminology."""
+
+    segments: list[tuple[str, str | None]] = []
+    cursor = 0
+    for match in _KOREAN_VISUAL_DESIGN_PATTERN.finditer(source):
+        if match.start() > cursor:
+            segments.append((source[cursor : match.start()], None))
+        korean = match.group(0)
+        segments.append((korean, _KOREAN_VISUAL_DESIGN_TRANSLATIONS[korean]))
+        cursor = match.end()
+    if cursor < len(source):
+        segments.append((source[cursor:], None))
+    return tuple(segments) or ((source, None),)
+
+
+def _single_input_token_count(input_ids: Any) -> int:
+    """Return a tokenizer batch's sole sequence length, failing closed.
+
+    Hugging Face returns a rank-two tensor when ``return_tensors="pt"`` is
+    requested.  Lightweight integrations and test doubles may return Python
+    lists instead, so accept both representations without importing torch.
+    The translator always tokenizes one prompt and therefore rejects any
+    multi-item or otherwise ambiguous batch.
+    """
+
+    shape = getattr(input_ids, "shape", None)
+    if shape is not None:
+        try:
+            dimensions = tuple(int(dimension) for dimension in shape)
+        except (TypeError, ValueError):
+            dimensions = ()
+        if len(dimensions) == 2 and dimensions[0] == 1 and dimensions[1] > 0:
+            return dimensions[1]
+        raise ValidationError(
+            "M2M100 tokenizer returned invalid input_ids for one prompt"
+        )
+
+    if not isinstance(input_ids, (list, tuple)) or not input_ids:
+        raise ValidationError(
+            "M2M100 tokenizer returned invalid input_ids for one prompt"
+        )
+    first = input_ids[0]
+    if isinstance(first, (list, tuple)):
+        if len(input_ids) != 1 or not first:
+            raise ValidationError(
+                "M2M100 tokenizer returned invalid input_ids for one prompt"
+            )
+        return len(first)
+    raise ValidationError("M2M100 tokenizer returned invalid input_ids for one prompt")
+
+
+def _verify_translator_file(
+    file_path: str | os.PathLike[str],
+    *,
+    required: VerifiedFile,
+    should_cancel: Callable[[], bool] | None = None,
+) -> None:
+    """Stream-verify one reviewed runtime file once per unchanged local inode."""
+
+    path = Path(file_path).resolve(strict=True)
+    before = path.stat()
+    cache_key = (
+        str(path),
+        required.sha256,
+        required.size_bytes,
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    with _WEIGHTS_VERIFICATION_LOCK:
+        if cache_key in _VERIFIED_TRANSLATOR_FILES:
+            return
+        if before.st_size != required.size_bytes or not path.is_file():
+            raise IntegrityError(
+                "Pinned M2M100 translator runtime file failed size/type "
+                f"verification: {required.path}."
+            )
+        digest = hashlib.sha256()
+        with path.open("rb") as weights_file:
+            for chunk in iter(
+                lambda: weights_file.read(_WEIGHTS_HASH_CHUNK_BYTES),
+                b"",
+            ):
+                if should_cancel is not None and should_cancel():
+                    raise TranslationSetupCancelled(
+                        "Korean translator setup was stopped."
+                    )
+                digest.update(chunk)
+        after = path.stat()
+        if (
+            before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+            or digest.hexdigest() != required.sha256
+        ):
+            raise IntegrityError(
+                "Pinned M2M100 translator runtime file failed SHA-256 "
+                f"verification: {required.path}. The translator was not loaded."
+            )
+        _VERIFIED_TRANSLATOR_FILES.add(cache_key)
+
+
+def _verify_translator_weights(
+    weights_path: str | os.PathLike[str],
+    *,
+    expected_sha256: str,
+) -> None:
+    """Backward-compatible internal wrapper for direct checkpoint verification."""
+
+    path = Path(weights_path).resolve(strict=True)
+    _verify_translator_file(
+        path,
+        required=VerifiedFile(
+            path="pytorch_model.bin",
+            size_bytes=path.stat().st_size,
+            sha256=expected_sha256,
+        ),
+    )
 
 
 def _failed_translation(

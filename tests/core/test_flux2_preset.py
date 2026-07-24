@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 from PIL import Image
 
+import aisketcher.presets as presets_module
 from aisketcher import (
     BackendCapabilities,
     FakeBackend,
@@ -18,12 +21,34 @@ from aisketcher import (
 )
 from aisketcher.errors import ModelUnavailableError
 from aisketcher.flux2_backend import Flux2KleinBackend
+from aisketcher.model_registry import MODEL_ARTIFACTS, VerifiedFile
 from aisketcher.presets import (
     FLUX2_KLEIN_BASE,
     FLUX2_SMALL_DECODER,
     get_preset,
     resolve_recipe,
 )
+
+_FIXTURE_CONTENT = b"fixture"
+_FIXTURE_SHA256 = hashlib.sha256(_FIXTURE_CONTENT).hexdigest()
+
+
+@pytest.fixture(autouse=True)
+def _use_tiny_verified_payloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    tiny_artifacts = {}
+    for key, artifact in MODEL_ARTIFACTS.items():
+        tiny_artifacts[key] = replace(
+            artifact,
+            files=tuple(
+                VerifiedFile(
+                    path=required.path,
+                    size_bytes=len(_FIXTURE_CONTENT),
+                    sha256=_FIXTURE_SHA256,
+                )
+                for required in artifact.files
+            ),
+        )
+    monkeypatch.setattr(presets_module, "MODEL_ARTIFACTS", tiny_artifacts)
 
 
 def test_flux2_edit_preset_is_pinned_and_uses_validated_t4_defaults() -> None:
@@ -38,7 +63,7 @@ def test_flux2_edit_preset_is_pinned_and_uses_validated_t4_defaults() -> None:
     assert preset.negative_prompt == ""
     assert preset.required_control == "reference-image"
     assert preset.max_dimension == 1024
-    assert preset.estimated_bytes == 16_225_156_608
+    assert preset.estimated_bytes == 16_229_653_713
 
 
 def test_flux2_recipe_requires_reference_image_not_canny() -> None:
@@ -107,12 +132,12 @@ def test_flux2_install_plan_uses_role_scoped_safe_files(tmp_path: Path) -> None:
 
     plan = manager.plan_install("flux2-klein-edit@1")
 
-    assert plan.estimated_bytes == 16_225_156_608
+    assert plan.estimated_bytes == 16_229_653_713
     assert plan.download_bytes == plan.estimated_bytes
     assert tuple(item.role for item in plan.items) == ("base-edit", "decoder")
     assert tuple(item.estimated_bytes for item in plan.items) == (
-        15_975_635_268,
-        249_521_340,
+        15_980_131_531,
+        249_522_182,
     )
     base_patterns, decoder_patterns = (
         plan.items[0].allow_patterns,
@@ -173,6 +198,11 @@ def test_flux2_install_uses_safe_doubles_and_role_specific_markers(
         assert marker["download_policy"] == "safetensors-components-v1"
         assert marker["safe_tensors_only"] is True
         assert marker["trust_remote_code"] is False
+        assert marker["schema"] == "aisketcher-model-cache"
+        assert marker["schema_version"] == 2
+        assert marker["policy_version"] == 2
+        assert marker["hash_policy"] == "pinned-commit-and-runtime-sha256-v2"
+        assert marker["artifact_fingerprint"][0]["sha256"] == _FIXTURE_SHA256
 
 
 def test_studio_from_flux2_preset_constructs_exact_lazy_backend(tmp_path: Path) -> None:

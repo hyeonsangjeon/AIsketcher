@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
+import aisketcher.studio_app.runtime as runtime_module
 from aisketcher.prompt_normalization import TranslatorMetadata
 from aisketcher.studio_app import AppController, build_app
 from aisketcher.studio_app.app import STUDIO_JS
@@ -21,6 +22,7 @@ from aisketcher.studio_app.i18n import text
 from aisketcher.studio_app.runtime import (
     StudioAppError,
     StudioJobCancelled,
+    _CrossProcessFileLease,
     prepare_replay_input,
 )
 
@@ -207,6 +209,458 @@ def _wait_until(predicate: Any, *, timeout: float = 2.0) -> None:
     raise AssertionError("condition was not reached before timeout")
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("fcntl") is None,
+    reason="advisory host leases require fcntl",
+)
+def test_host_file_lease_recovers_stale_metadata_and_records_the_new_owner(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "shared" / "accelerator.lock"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"pid": 999999, "session_id": "stale"}', encoding="utf-8")
+    lease = _CrossProcessFileLease(path)
+    cancellation_event = threading.Event()
+
+    with lease.acquire(
+        cancellation_event=cancellation_event,
+        timeout_seconds=1,
+        session_id="fresh-session",
+    ):
+        owner = json.loads(path.read_text(encoding="utf-8"))
+        assert owner["schema"] == "aisketcher.host-lease/v1"
+        assert owner["session_id"] == "fresh-session"
+
+    # The file is intentionally persistent; a second acquisition proves stale
+    # owner JSON is never treated as a lock.
+    with lease.acquire(
+        cancellation_event=cancellation_event,
+        timeout_seconds=1,
+        session_id="next-session",
+    ):
+        owner = json.loads(path.read_text(encoding="utf-8"))
+        assert owner["session_id"] == "next-session"
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("fcntl") is None,
+    reason="advisory host leases require fcntl",
+)
+def test_host_file_lease_times_out_and_stop_interrupts_a_waiter(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "accelerator.lock"
+    owner = _CrossProcessFileLease(path)
+    waiter = _CrossProcessFileLease(path)
+    owner_cancel = threading.Event()
+
+    with owner.acquire(
+        cancellation_event=owner_cancel,
+        timeout_seconds=1,
+        session_id="owner",
+    ):
+        with (
+            pytest.raises(TimeoutError, match="another AIsketcher process"),
+            waiter.acquire(
+                cancellation_event=threading.Event(),
+                timeout_seconds=0.05,
+                session_id="timeout",
+            ),
+        ):
+            raise AssertionError("contended lease must not be acquired")
+
+        waiter_cancel = threading.Event()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            blocked = executor.submit(
+                _acquire_cancelled_host_lease,
+                waiter,
+                waiter_cancel,
+            )
+            time.sleep(0.05)
+            waiter_cancel.set()
+            with pytest.raises(StudioJobCancelled, match="Stopped"):
+                blocked.result(timeout=1)
+
+
+def test_host_file_lease_fails_closed_without_a_platform_lock_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MissingPlatformLocks:
+        @staticmethod
+        def import_module(_name: str) -> Any:
+            raise ImportError("no platform lock backend")
+
+    monkeypatch.setattr(runtime_module, "importlib", MissingPlatformLocks())
+    lease = _CrossProcessFileLease(tmp_path / "accelerator.lock")
+
+    with (
+        pytest.raises(StudioAppError, match="no supported cross-process"),
+        lease.acquire(
+            cancellation_event=threading.Event(),
+            timeout_seconds=1,
+            session_id="unsupported-platform",
+        ),
+    ):
+        raise AssertionError("unsupported platforms must fail closed")
+
+
+def _acquire_cancelled_host_lease(
+    lease: _CrossProcessFileLease,
+    cancellation_event: threading.Event,
+) -> None:
+    with lease.acquire(
+        cancellation_event=cancellation_event,
+        timeout_seconds=5,
+        session_id="cancelled-waiter",
+    ):
+        raise AssertionError("cancelled waiter must not acquire the host lease")
+
+
+def test_stop_during_blocking_translation_never_starts_generation_and_recovers(
+    tmp_path: Path,
+) -> None:
+    korean_brief = "귀여운 종이 왕국"
+    translated_brief = "A cute layered paper kingdom"
+
+    class BlockingTranslator:
+        def __init__(self) -> None:
+            self.entered = threading.Event()
+            self.release = threading.Event()
+            self.calls: list[str] = []
+            self.blocked_once = False
+
+        @property
+        def metadata(self) -> TranslatorMetadata:
+            return TranslatorMetadata(
+                provider="test",
+                model_id="example/ko-en",
+                revision="test-revision",
+                local_files_only=True,
+            )
+
+        def translate(self, value: str) -> str:
+            self.calls.append(value)
+            if value == korean_brief and not self.blocked_once:
+                self.blocked_once = True
+                self.entered.set()
+                assert self.release.wait(timeout=5)
+            return translated_brief
+
+    class CountingStudio(_Studio):
+        def __init__(self, preset: str) -> None:
+            super().__init__(preset)
+            self.explore_prompts: list[str] = []
+
+        def explore(
+            self,
+            prepared: str,
+            *,
+            intent: Any,
+            outputs: int,
+            **kwargs: Any,
+        ) -> _Study:
+            self.explore_prompts.append(str(getattr(intent, "model_prompt", None) or intent.prompt))
+            return super().explore(prepared, outputs=outputs, **kwargs)
+
+    class CountingController(AppController):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.finished_sessions: list[str] = []
+
+        def finish_operation(
+            self,
+            state_value: Any,
+            operation_event: threading.Event,
+        ) -> None:
+            session_id = getattr(state_value, "session_id", None)
+            if session_id is None:
+                session_id = state_value["session_id"]
+            self.finished_sessions.append(str(session_id))
+            super().finish_operation(state_value, operation_event)
+
+    translator = BlockingTranslator()
+    studio = CountingStudio(PRESET)
+    controller = CountingController(
+        studio_factory=lambda _preset: studio,
+        prompt_translator=translator,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.png")
+    blocked_state = controller.initial_state("ko")
+    other_state = controller.initial_state("en")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        blocked = executor.submit(
+            _explore,
+            controller,
+            source,
+            blocked_state,
+            brief=korean_brief,
+        )
+        assert translator.entered.wait(timeout=2)
+        assert controller.operation_state(blocked_state) == "running"
+
+        unaffected = _explore(
+            controller,
+            source,
+            other_state,
+            brief="A crisp English paper kingdom",
+        )
+        assert len(unaffected.gallery) == 4
+        assert studio.explore_prompts == ["A crisp English paper kingdom"]
+
+        controller.cancel_operation(blocked_state)
+        assert controller.operation_state(blocked_state) == "stopping"
+        controller.clear_operation(blocked_state)
+        assert controller.operation_state(blocked_state) == "stopping"
+        translator.release.set()
+        with pytest.raises(StudioJobCancelled):
+            blocked.result(timeout=2)
+
+    assert controller.operation_state(blocked_state) == "idle"
+    assert controller.registry.latest(str(blocked_state["session_id"])) is None
+    assert controller.finished_sessions.count(str(blocked_state["session_id"])) == 1
+    assert studio.explore_prompts == ["A crisp English paper kingdom"]
+
+    recovered = _explore(
+        controller,
+        source,
+        blocked_state,
+        brief=korean_brief,
+    )
+    assert len(recovered.gallery) == 4
+    assert studio.explore_prompts[-1] == translated_brief
+    assert controller.operation_state(blocked_state) == "idle"
+    assert controller.finished_sessions.count(str(blocked_state["session_id"])) == 2
+
+
+def test_stop_during_blocking_refinement_translation_never_calls_vary(
+    tmp_path: Path,
+) -> None:
+    korean_instruction = "종이 가장자리를 더 선명하게"
+
+    class BlockingTranslator:
+        def __init__(self) -> None:
+            self.entered = threading.Event()
+            self.release = threading.Event()
+            self.blocked_once = False
+
+        @property
+        def metadata(self) -> TranslatorMetadata:
+            return TranslatorMetadata(
+                provider="test",
+                model_id="example/ko-en",
+                revision="test-revision",
+                local_files_only=True,
+            )
+
+        def translate(self, value: str) -> str:
+            if value == korean_instruction and not self.blocked_once:
+                self.blocked_once = True
+                self.entered.set()
+                assert self.release.wait(timeout=5)
+            return "Use crisper paper edges"
+
+    class CountingStudio(_Studio):
+        def __init__(self, preset: str) -> None:
+            super().__init__(preset)
+            self.vary_calls = 0
+
+        def vary(self, selected: _Candidate, *, outputs: int, **kwargs: Any) -> _Study:
+            self.vary_calls += 1
+            return super().vary(selected, outputs=outputs, **kwargs)
+
+    class CountingController(AppController):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.finished_sessions: list[str] = []
+
+        def finish_operation(
+            self,
+            state_value: Any,
+            operation_event: threading.Event,
+        ) -> None:
+            session_id = getattr(state_value, "session_id", None)
+            if session_id is None:
+                session_id = state_value["session_id"]
+            self.finished_sessions.append(str(session_id))
+            super().finish_operation(state_value, operation_event)
+
+    translator = BlockingTranslator()
+    studio = CountingStudio(PRESET)
+    controller = CountingController(
+        studio_factory=lambda _preset: studio,
+        prompt_translator=translator,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.png")
+    explored = _explore(controller, source)
+    session_id = str(explored.state["session_id"])
+    completed_before = controller.finished_sessions.count(session_id)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        blocked = executor.submit(
+            controller.refine,
+            explored.state,
+            "subtle",
+            ("structure",),
+            korean_instruction,
+        )
+        assert translator.entered.wait(timeout=2)
+        assert controller.operation_state(explored.state) == "running"
+        controller.cancel_operation(explored.state)
+        assert controller.operation_state(explored.state) == "stopping"
+        translator.release.set()
+        with pytest.raises(StudioJobCancelled):
+            blocked.result(timeout=2)
+
+    assert controller.operation_state(explored.state) == "idle"
+    assert studio.vary_calls == 0
+    assert controller.finished_sessions.count(session_id) == completed_before + 1
+
+    recovered = controller.refine(
+        explored.state,
+        "subtle",
+        ("structure",),
+        korean_instruction,
+    )
+    assert len(recovered.gallery) == 4
+    assert studio.vary_calls == 1
+
+
+def test_preclaim_stop_tombstones_only_its_ticket_and_retry_can_claim(
+    tmp_path: Path,
+) -> None:
+    controller = AppController(
+        studio_factory=_Studio,
+        workspace_root=tmp_path / "work",
+    )
+    state = controller.initial_state("ko")
+
+    stopped_ticket = controller.start_operation(state)
+    controller.cancel_operation(state)
+    assert controller.operation_state(state) == "idle"
+
+    retry_ticket = controller.start_operation(state)
+    assert retry_ticket != stopped_ticket
+    with pytest.raises(StudioJobCancelled, match="중지"):
+        controller.claim_operation(state, stopped_ticket)
+
+    # A delayed cleanup belonging to the cancelled callback cannot remove the
+    # retry's newer token.
+    controller.clear_operation(state, stopped_ticket)
+    assert controller.operation_state(state) == "running"
+    retry_event = controller.claim_operation(state, retry_ticket)
+    controller.finish_operation(state, retry_event)
+    assert controller.operation_state(state) == "idle"
+
+    # When the cancelled callback arrives before a retry, its exact ticket is
+    # consumed without leaving an unbounded pending token behind.
+    another_state = controller.initial_state("en")
+    abandoned_ticket = controller.start_operation(another_state)
+    controller.cancel_operation(another_state)
+    with pytest.raises(StudioJobCancelled, match="Stopped"):
+        controller.claim_operation(another_state, abandoned_ticket)
+    controller.clear_operation(another_state, abandoned_ticket)
+    assert another_state["session_id"] not in controller._operation_tokens
+    assert another_state["session_id"] not in controller._operation_ids
+    assert another_state["session_id"] not in controller._operation_kinds
+
+
+def test_quick_retry_cannot_overlap_a_claimed_job_that_is_still_stopping(
+    tmp_path: Path,
+) -> None:
+    controller = AppController(
+        studio_factory=_Studio,
+        workspace_root=tmp_path / "work",
+    )
+    state = controller.initial_state("en")
+
+    running_ticket = controller.start_operation(state)
+    running_event = controller.claim_operation(state, running_ticket)
+    controller.cancel_operation(state)
+    assert controller.operation_state(state) == "stopping"
+
+    # A second click while the cancelled backend is still unwinding must bind
+    # to the existing operation instead of creating an orphan token that could
+    # later overlap the first GPU job.
+    retry_while_stopping = controller.start_operation(state)
+    assert retry_while_stopping == running_ticket
+    with pytest.raises(StudioAppError, match="already active"):
+        controller.claim_operation(state, retry_while_stopping)
+    controller.clear_operation(state, retry_while_stopping)
+    assert controller.operation_state(state) == "stopping"
+
+    controller.finish_operation(state, running_event)
+    assert controller.operation_state(state) == "idle"
+
+    retry_ticket = controller.start_operation(state)
+    assert retry_ticket != running_ticket
+    retry_event = controller.claim_operation(state, retry_ticket)
+    controller.finish_operation(state, retry_event)
+    assert controller.operation_state(state) == "idle"
+
+
+def test_cancelled_shared_runtime_does_not_poison_another_sessions_completed_run(
+    tmp_path: Path,
+) -> None:
+    class ClosedAwareStudio(_Studio):
+        def vary(self, selected: _Candidate, *, outputs: int, **kwargs: Any) -> _Study:
+            if self.closed:
+                raise RuntimeError("closed shared backend")
+            return super().vary(selected, outputs=outputs, **kwargs)
+
+    created: list[ClosedAwareStudio] = []
+
+    def factory(preset: str) -> ClosedAwareStudio:
+        studio = ClosedAwareStudio(preset)
+        created.append(studio)
+        return studio
+
+    controller = AppController(
+        studio_factory=factory,
+        workspace_root=tmp_path / "work",
+    )
+    source = _source(tmp_path / "source.png")
+    completed = _explore(controller, source, controller.initial_state("en"))
+    shared = created[0]
+    shared.entered = threading.Event()
+    shared.release = threading.Event()
+    cancelled_state = controller.initial_state("ko")
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        cancelled = executor.submit(
+            _explore,
+            controller,
+            source,
+            cancelled_state,
+        )
+        assert shared.entered.wait(timeout=2)
+        controller.cancel_operation(cancelled_state)
+        shared.release.set()
+        with pytest.raises(StudioJobCancelled):
+            cancelled.result(timeout=2)
+
+    assert shared.closed is True
+    refined = controller.refine(
+        completed.state,
+        "subtle",
+        ("structure",),
+        "Use crisper paper edges",
+    )
+    assert len(refined.gallery) == 4
+    assert len(created) == 2
+    assert created[1].closed is False
+    assert (
+        controller.registry.get(
+            str(refined.state["run_id"]),
+            str(refined.state["session_id"]),
+        ).studio
+        is created[1]
+    )
+
+
 def test_cancelled_job_waiting_for_gpu_never_loads_its_backend_and_can_retry(
     tmp_path: Path,
 ) -> None:
@@ -238,9 +692,7 @@ def test_cancelled_job_waiting_for_gpu_never_loads_its_backend_and_can_retry(
         first_future = executor.submit(_explore, first, source)
         assert first_entered.wait(timeout=2)
         second_future = executor.submit(_explore, second, source, second_state)
-        _wait_until(
-            lambda: second_state["session_id"] in second._claimed_operation_tokens
-        )
+        _wait_until(lambda: second_state["session_id"] in second._claimed_operation_tokens)
 
         second.cancel_operation(second_state)
         second.clear_operation(second_state)
@@ -284,10 +736,7 @@ def test_waiting_refine_stop_does_not_cancel_another_sessions_shared_backend(
             ("structure",),
             "Sharper paper edges",
         )
-        _wait_until(
-            lambda: past_run.state["session_id"]
-            in controller._claimed_operation_tokens
-        )
+        _wait_until(lambda: past_run.state["session_id"] in controller._claimed_operation_tokens)
 
         controller.cancel_operation(past_run.state)
         controller.clear_operation(past_run.state)
@@ -482,10 +931,7 @@ def test_waiting_model_setup_stop_does_not_cancel_another_session(
             "ko",
             waiting_state,
         )
-        _wait_until(
-            lambda: waiting_state["session_id"]
-            in controller._claimed_operation_tokens
-        )
+        _wait_until(lambda: waiting_state["session_id"] in controller._claimed_operation_tokens)
 
         controller.cancel_operation(waiting_state)
         controller.clear_operation(waiting_state)
@@ -560,12 +1006,8 @@ def test_native_like_refine_embeds_instruction_in_the_candidate_recipe(
     assert len(refined.gallery) == 4
     assert len(studio.vary_calls) == 1
     recipe = studio.vary_calls[0].recipe
-    assert recipe.prompt.endswith(
-        "Refinement instruction: Use sharper paper edges"
-    )
-    assert recipe.model_prompt.endswith(
-        "Refinement instruction: Use sharper paper edges"
-    )
+    assert recipe.prompt.endswith("Refinement instruction: Use sharper paper edges")
+    assert recipe.model_prompt.endswith("Refinement instruction: Use sharper paper edges")
 
 
 def test_native_like_refine_rejects_a_composed_prompt_over_the_recipe_limit(
@@ -682,14 +1124,13 @@ def test_every_long_running_studio_action_has_a_wired_cancel_dependency(
         cancel_dependencies = [
             dependency
             for dependency in dependencies
-            if (next(
-                (
-                    elem_id(component_id)
-                    for component_id, _event_name in dependency["targets"]
-                ),
-                None,
+            if (
+                next(
+                    (elem_id(component_id) for component_id, _event_name in dependency["targets"]),
+                    None,
+                )
+                == action
             )
-            == action)
             and dependency.get("cancels")
         ]
         assert len(cancel_dependencies) == 1

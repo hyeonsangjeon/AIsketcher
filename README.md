@@ -87,8 +87,16 @@ For a new live study, **Auto** selects the T4-validated
 sketch-to-design and photo-led edits; the SDXL Canny presets remain available
 only for legacy manifest replay or intentional edge-conditioned work. Preparing
 a model shows the pinned revisions, transfer size, cache destination, licenses,
-and the pinned Korean→English helper before any download. The same confirmation
-prepares both the selected model and that helper when either is missing.
+and the pinned Korean→English helper before any download. The helper is
+MIT-licensed `facebook/m2m100_418M`, pinned to revision
+`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636`, and adds about 1.9 GB when it is
+not cached. The same confirmation prepares both the selected model and that
+helper when either is missing. It also verifies every cached image-model
+runtime file — weights, configuration, schedulers, indexes, and tokenizers —
+against its reviewed size and SHA-256 once per Studio process before the
+backend can load it. A new process may initially label existing files
+“Not yet verified”; on the validated T4, checking the 16.2 GB FLUX cache can
+take up to about one minute without downloading it.
 
 Guided Sample works on CPU. The supported interactive FLUX.2 path requires
 CUDA; Apple Silicon MPS remains experimental for the legacy SDXL backend only.
@@ -96,6 +104,13 @@ Live CPU generation is disabled. Use **Stop** instead of refreshing while a
 download or generation is active. Studio reconnects the same browser session to
 work that is still running, and exposes a recovery layer when the temporary
 server itself has ended.
+
+For Korean briefs, Studio preserves the exact source text, protects recognized
+visual-design terms with a deterministic glossary, and then prepares separate
+model-facing English with the pinned helper. The original, prepared English,
+helper ID, and immutable revision are recorded as prompt provenance; this
+normalization improves terminology consistency but is not a promise that every
+Korean phrase will translate perfectly.
 
 PyPI renders this README from the metadata embedded in each immutable release
 artifact. Publishing the tagged `v0.3.0` GitHub Release builds and publishes

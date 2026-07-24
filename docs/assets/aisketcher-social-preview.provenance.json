@@ -17,13 +17,13 @@
   "c2pa_provenance_embedded": true,
   "repository_social_preview": {
     "asset": "aisketcher-social-preview-github.jpg",
-    "asset_sha256": "56c5f86c4f59484137cddfdde92f74f29ceaf80f38f289e4ced7cb79ed05fe44",
+    "asset_sha256": "b93aed247d7c48435a36271b181add0cda9dbf7b29627c6a74c6af58bbbd4f23",
     "dimensions": [
       1280,
       640
     ],
-    "bytes": 227891,
-    "transformation": "Deterministic resize, centered crop, and JPEG compression from the primary marketing artwork",
+    "bytes": 227633,
+    "transformation": "Deterministic resize, centered crop, JPEG compression, and lossless metadata stripping from the primary marketing artwork",
     "github_settings_upload_ready": true
   },
   "license_notice": "../../ARTWORK_LICENSE.md"

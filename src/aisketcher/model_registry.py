@@ -8,16 +8,16 @@ visible for evaluation without becoming downloadable defaults.
 The registry separates two kinds of integrity:
 
 * every repository is pinned to an immutable Hub commit;
-* every selected LFS payload is pinned to its published SHA-256 digest.
+* every selected runtime file is pinned to its reviewed SHA-256 digest.
 
-Small configuration and tokenizer files stored directly in Git are protected
-by the immutable commit revision. ``download_bytes`` is therefore the sum of
-the selected LFS payloads whose published digests are recorded here, rather
-than the size of every example image or alternate precision contained in a
-model repository. The v0.3 installer uses pinned revisions, a file allowlist,
-and a completion marker; this registry makes the upstream payload digests
-available for audit but does not imply that every cache load rehashes multi-GB
-files.
+For installable presets this includes Git-backed configuration, scheduler, and
+tokenizer files as well as LFS-backed weights. ``download_bytes`` is the sum of
+the selected runtime files, rather than every example image or alternate
+precision contained in a model repository. The v0.3 installer uses pinned
+revisions, an exact file allowlist, and these digests to verify every freshly
+downloaded or newly encountered cache. A process-local stat receipt avoids
+repeatedly hashing an unchanged multi-GB cache; the persistent marker alone is
+never trusted as an authentication token.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ class HashPolicy(_StringEnum):
     """How a future installer must verify a selected model snapshot."""
 
     PINNED_COMMIT_AND_LFS_SHA256 = "pinned-commit-and-lfs-sha256-v1"
+    PINNED_COMMIT_AND_RUNTIME_SHA256 = "pinned-commit-and-runtime-sha256-v2"
 
 
 class RuntimeFamily(_StringEnum):
@@ -91,7 +92,7 @@ class ControlType(_StringEnum):
 
 @dataclass(frozen=True, slots=True)
 class VerifiedFile:
-    """One selected Hub LFS payload with its expected digest and size."""
+    """One selected Hub runtime file with its expected digest and size."""
 
     path: str
     size_bytes: int
@@ -291,6 +292,21 @@ _ARTIFACTS = {
         role="base-edit",
         files=(
             _file(
+                "model_index.json",
+                446,
+                "51a76cb1cf3ed37423a1128c79c22faee8e6fbe7f5aaeb737f0a258930dbaac0",
+            ),
+            _file(
+                "scheduler/scheduler_config.json",
+                486,
+                "067afb012cef64553a763447d1efd93daeffcc0123ca7e25b09f8de20b90762e",
+            ),
+            _file(
+                "text_encoder/config.json",
+                1_536,
+                "214b4c29a0d975e9fddf9994a5673f22cb2c4c5750352f9227c2c3251ebeab40",
+            ),
+            _file(
                 "text_encoder/model-00001-of-00002.safetensors",
                 4_967_215_360,
                 "8c0506e7f4936fa7e26183a4fd8da4e2bdbc5990ba64ae441f965d51228f36ea",
@@ -301,14 +317,59 @@ _ARTIFACTS = {
                 "82f2bd839378541b0557bfabaf37c7d3d637071fdcb73302dedd7cf61162ce07",
             ),
             _file(
+                "text_encoder/model.safetensors.index.json",
+                32_855,
+                "06b3d5319b6d76d1a4a2433419180016cfd54ed62d086a5e6567a809f8c82634",
+            ),
+            _file(
+                "tokenizer/added_tokens.json",
+                707,
+                "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+            ),
+            _file(
+                "tokenizer/chat_template.jinja",
+                4_168,
+                "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+            ),
+            _file(
+                "tokenizer/merges.txt",
+                1_671_853,
+                "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+            ),
+            _file(
+                "tokenizer/special_tokens_map.json",
+                613,
+                "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+            ),
+            _file(
                 "tokenizer/tokenizer.json",
                 11_422_654,
                 "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
             ),
             _file(
+                "tokenizer/tokenizer_config.json",
+                5_404,
+                "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0",
+            ),
+            _file(
+                "tokenizer/vocab.json",
+                2_776_833,
+                "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+            ),
+            _file(
+                "transformer/config.json",
+                541,
+                "09733c74a3da6d17dd0a0472a091a8950c7c6935889c32c16cc800ede05029de",
+            ),
+            _file(
                 "transformer/diffusion_pytorch_model.safetensors",
                 7_751_109_744,
                 "9f29f9edcfdae452a653ffb51a534ca4decd389952c225724ff3b94042612a6e",
+            ),
+            _file(
+                "vae/config.json",
+                821,
+                "0d6dfb69ae95a5e2ac9836284bbb63d8b38ce67b25ba2dff380752b2a10ab948",
             ),
             _file(
                 "vae/diffusion_pytorch_model.safetensors",
@@ -322,6 +383,7 @@ _ARTIFACTS = {
         commercial_use=True,
         public=True,
         gated=False,
+        hash_policy=HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256,
     ),
     "flux2-small-decoder": ModelArtifact(
         artifact_id="flux2-small-decoder",
@@ -329,6 +391,11 @@ _ARTIFACTS = {
         revision="a3efc24f613ef42d9428af62fdbd6f5fd8856c4a",
         role="decoder",
         files=(
+            _file(
+                "config.json",
+                842,
+                "88641eb0ebe46877b32822fb91aff828574765ef6b2b4bbc73d379051d006267",
+            ),
             _file(
                 "diffusion_pytorch_model.safetensors",
                 249_521_340,
@@ -341,6 +408,7 @@ _ARTIFACTS = {
         commercial_use=True,
         public=True,
         gated=False,
+        hash_policy=HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256,
     ),
     "z-image-turbo": ModelArtifact(
         artifact_id="z-image-turbo",
@@ -491,9 +559,29 @@ _ARTIFACTS = {
         role="base-generation",
         files=(
             _file(
+                "model_index.json",
+                609,
+                "6d7b93508390ab91ac5bfbe4aeb4dc2d83f7bb1b05fb069d714b5b0c75f70d44",
+            ),
+            _file(
+                "scheduler/scheduler_config.json",
+                479,
+                "af3e45a949aff8b8341ab8b811429ec03fee857a700a1d9477363e4fff9666e2",
+            ),
+            _file(
+                "text_encoder/config.json",
+                565,
+                "39b8b2e4b1949e36969caa425b6c81c68bace99198dd9078ce05d16ad401fe7f",
+            ),
+            _file(
                 "text_encoder/model.fp16.safetensors",
                 246_144_152,
                 "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+            ),
+            _file(
+                "text_encoder_2/config.json",
+                575,
+                "a892d1c3a69a7e9247a24de2bc1d5891e3109a54696e53be20093af671072c34",
             ),
             _file(
                 "text_encoder_2/model.fp16.safetensors",
@@ -501,9 +589,59 @@ _ARTIFACTS = {
                 "ec310df2af79c318e24d20511b601a591ca8cd4f1fce1d8dff822a356bcdb1f4",
             ),
             _file(
+                "tokenizer/merges.txt",
+                524_619,
+                "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+            ),
+            _file(
+                "tokenizer/special_tokens_map.json",
+                472,
+                "c4864a9376a8401918425bed71fc14fc0e81f9b59ec45c1cf96cccb2df508eac",
+            ),
+            _file(
+                "tokenizer/tokenizer_config.json",
+                737,
+                "19d7b034cb0cc3ce9766c2231373ab8aa8991fc72e2c8f76558bfaae3de0d563",
+            ),
+            _file(
+                "tokenizer/vocab.json",
+                1_059_962,
+                "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+            ),
+            _file(
+                "tokenizer_2/merges.txt",
+                524_619,
+                "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+            ),
+            _file(
+                "tokenizer_2/special_tokens_map.json",
+                460,
+                "f118ab3a983206e4f32583448de6bd6aae4ee21869135cef1f5848a753cdaab6",
+            ),
+            _file(
+                "tokenizer_2/tokenizer_config.json",
+                725,
+                "c9d23941f76a41cbd50eda9290f57be7828f0a7a677939e9ef181f7e12bd1bdf",
+            ),
+            _file(
+                "tokenizer_2/vocab.json",
+                1_059_962,
+                "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+            ),
+            _file(
+                "unet/config.json",
+                1_680,
+                "30ebc70750223e59006f7f2b4e1e6c102570aa19a9c4ae3e1fbe7591332dbae6",
+            ),
+            _file(
                 "unet/diffusion_pytorch_model.fp16.safetensors",
                 5_135_149_760,
                 "83e012a805b84c7ca28e5646747c90a243c65c8ba4f070e2d7ddc9d74661e139",
+            ),
+            _file(
+                "vae/config.json",
+                642,
+                "0b331c8ac22ded5f9997a144a575c1d113d6169aff262c353f39015bd24a6264",
             ),
             _file(
                 "vae/diffusion_pytorch_model.fp16.safetensors",
@@ -523,6 +661,7 @@ _ARTIFACTS = {
         commercial_use=True,
         public=True,
         gated=False,
+        hash_policy=HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256,
     ),
     "sdxl-canny-small": ModelArtifact(
         artifact_id="sdxl-canny-small",
@@ -530,6 +669,11 @@ _ARTIFACTS = {
         revision="edd85f64c5f87dfb6d73762949d9daca16389518",
         role="controlnet-canny",
         files=(
+            _file(
+                "config.json",
+                1_259,
+                "3ef4f560b0d21eadee5da2ac4fa047603ed85aa61d24ef32017a7b7d37e97a2d",
+            ),
             _file(
                 "diffusion_pytorch_model.fp16.safetensors",
                 320_237_179,
@@ -548,6 +692,38 @@ _ARTIFACTS = {
         commercial_use=True,
         public=True,
         gated=False,
+        hash_policy=HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256,
+    ),
+    "sdxl-canny-quality": ModelArtifact(
+        artifact_id="sdxl-canny-quality",
+        model_id="diffusers/controlnet-canny-sdxl-1.0",
+        revision="eb115a19a10d14909256db740ed109532ab1483c",
+        role="controlnet-canny",
+        files=(
+            _file(
+                "config.json",
+                1_309,
+                "81f9bfed178f666c332892cd568a78ed8918fe08aaee994d05428a75ab44f2ca",
+            ),
+            _file(
+                "diffusion_pytorch_model.fp16.safetensors",
+                2_502_139_136,
+                "b2e7d3921058a442cc80430d1ec8847f42599c705e2451c95e77cf4dcf8d6c25",
+            ),
+        ),
+        license_id="openrail++",
+        license_url=(
+            "https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0/"
+            "tree/eb115a19a10d14909256db740ed109532ab1483c"
+        ),
+        redistribution_notice=(
+            "Weights are not bundled. Review the pinned model card and preserve "
+            "the upstream OpenRAIL++ terms when redistributing this adapter."
+        ),
+        commercial_use=True,
+        public=True,
+        gated=False,
+        hash_policy=HashPolicy.PINNED_COMMIT_AND_RUNTIME_SHA256,
     ),
     "mage-flow-edit-turbo": ModelArtifact(
         artifact_id="mage-flow-edit-turbo",

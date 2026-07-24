@@ -59,14 +59,21 @@ image model does not guarantee Korean prompt following.
   user choose between installing the optional local translator or editing the
   English prompt manually.
 
-The zero-credential local path is the public Apache-2.0
-`Helsinki-NLP/opus-mt-ko-en` Marian checkpoint, loaded lazily and pinned like
-other optional weights. The explicit model-preparation action discloses and
-prepares this 315 MB helper alongside the selected image model; normal prompt
-submission never starts an undisclosed network download. Azure Translator or
-another user-configured provider may be an alternative, but is never silently
-required. Translation and design prompt enhancement are separate steps:
-translation preserves meaning, while a small deterministic template expresses
+The zero-credential local path is the public MIT-licensed
+`facebook/m2m100_418M` checkpoint, pinned to immutable revision
+`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636` and loaded lazily like other
+optional weights. The explicit model-preparation action discloses and prepares
+this roughly 1.9 GB helper alongside the selected image model; normal prompt
+submission never starts an undisclosed network download. Before Korean→English
+translation, a small deterministic glossary protects recognized visual-design
+terms such as material and palette vocabulary from undesirable literal
+translations. Studio records the exact Korean original, prepared English,
+helper ID, immutable revision, and whether the user edited the result as
+separate prompt provenance. This improves terminology consistency; it does not
+claim perfect translation for arbitrary Korean. Azure Translator or another
+user-configured provider may be an alternative, but is never silently required.
+Translation and design prompt enhancement are separate steps: translation
+preserves the requested meaning, while a small deterministic template expresses
 the requested edit and preservation constraints without inventing new creative
 content.
 
@@ -107,11 +114,14 @@ Selecting an uninstalled public default starts an explicit first-use flow:
    from the local cache afterward.
 2. Show the current installation phase and preserve the reviewed byte estimate;
    v0.3.0 does not claim live byte-level Hub telemetry.
-3. Keep generation disabled until every required pinned file group is present
-   and the local completion marker is valid.
-4. Provide Stop and allow retry. An active transfer stops at the next safe
-   selected-file boundary rather than pretending a partial tensor file is
-   usable.
+3. Keep generation disabled until every exact runtime file in the reviewed
+   allowlist — weights, configuration, scheduler, index, and tokenizer files —
+   passes its registry-backed size and SHA-256 check. A persistent completion
+   marker is provenance, not authentication; a fresh process verifies before
+   issuing its in-memory reuse receipt.
+4. Provide Stop and allow retry. Hashing checks cancellation between streamed
+   chunks, and an active transfer stops at the next safe selected-file boundary
+   rather than pretending a partial tensor file is usable.
 5. Preserve already installed models when another download fails.
 
 Arbitrary model URLs are intentionally not accepted in v0.3.0 Simple or

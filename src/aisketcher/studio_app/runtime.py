@@ -8,8 +8,11 @@ and importable without Gradio, Torch, or Diffusers.
 from __future__ import annotations
 
 import gc
+import importlib
 import inspect
 import json
+import math
+import os
 import re
 import secrets
 import shutil
@@ -31,7 +34,7 @@ from typing import Any, Protocol, cast
 from ..manifest import canonical_sha256
 from ..prompt_normalization import (
     KoreanEnglishTranslator,
-    MarianKoreanEnglishTranslator,
+    M2M100KoreanEnglishTranslator,
     NormalizedPrompt,
     contains_hangul,
     normalize_prompt,
@@ -58,6 +61,8 @@ DISPLAY_BADGE_KEYS = {
 _PROCESS_GENERATION_LOCK = threading.Lock()
 _PROCESS_GENERATION_STATE_LOCK = threading.RLock()
 _PROCESS_ACTIVE_GENERATION_SESSIONS: set[str] = set()
+DEFAULT_CROSS_PROCESS_LEASE_TIMEOUT_SECONDS = 60 * 60
+FLUX2_KLEIN_PRESET_PREFIX = "flux2-klein-edit@"
 
 
 def _file_sha256(path: Path) -> str:
@@ -68,12 +73,139 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _default_host_lease_path() -> Path:
+    """Return a stable per-user lock path shared by local Studio processes."""
+
+    user_scope = str(os.getuid()) if hasattr(os, "getuid") else "default"
+    return (
+        Path(tempfile.gettempdir())
+        / f"aisketcher-{user_scope}"
+        / "leases"
+        / "accelerator-and-model-cache.lock"
+    )
+
+
 class StudioAppError(RuntimeError):
     """A safe error that may be shown directly in the example UI."""
 
 
 class StudioJobCancelled(StudioAppError):
     """A queued or active Studio operation was stopped by its owning session."""
+
+
+class _CrossProcessFileLease:
+    """Advisory host lease for accelerator use and shared model-cache writes.
+
+    The lock file deliberately remains on disk after release. Its JSON payload
+    is diagnostic metadata only; the operating-system lock is authoritative,
+    so a process crash releases the lease and stale metadata never blocks the
+    next Studio process.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+
+    @contextmanager
+    def acquire(
+        self,
+        *,
+        cancellation_event: threading.Event,
+        timeout_seconds: float,
+        session_id: str,
+    ) -> Iterator[None]:
+        try:
+            lock_module = importlib.import_module("fcntl")
+            lock_kind = "posix"
+        except ImportError:
+            try:
+                lock_module = importlib.import_module("msvcrt")
+                lock_kind = "windows"
+            except ImportError as exc:  # pragma: no cover - unsupported platform
+                raise StudioAppError(
+                    "This platform has no supported cross-process file locking; "
+                    "AIsketcher refuses concurrent GPU/cache work."
+                ) from exc
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_CREAT
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(self.path, flags, 0o600)
+        except OSError as exc:
+            raise StudioAppError(
+                f"Could not open the AIsketcher host lease: {exc}"
+            ) from exc
+        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+        acquired = False
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            if lock_kind == "windows":
+                # msvcrt.locking() locks bytes rather than a whole descriptor.
+                # Keep one byte present before attempting the non-blocking lock.
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write("\0")
+                    handle.flush()
+            while not acquired:
+                if cancellation_event.is_set():
+                    raise StudioJobCancelled("Stopped by user.")
+                try:
+                    if lock_kind == "posix":
+                        lock_module.flock(
+                            handle.fileno(),
+                            lock_module.LOCK_EX | lock_module.LOCK_NB,
+                        )
+                    else:
+                        handle.seek(0)
+                        lock_module.locking(
+                            handle.fileno(),
+                            lock_module.LK_NBLCK,
+                            1,
+                        )
+                    acquired = True
+                except OSError as exc:
+                    if lock_kind == "posix" and not isinstance(exc, BlockingIOError):
+                        raise StudioAppError(
+                            f"Could not acquire the AIsketcher host lease: {exc}"
+                        ) from exc
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(
+                            "Timed out waiting for another AIsketcher process."
+                        ) from None
+                    cancellation_event.wait(min(0.1, remaining))
+
+            # Replacing stale owner metadata after acquiring the OS lock makes
+            # crash recovery observable without trusting a stale PID.
+            handle.seek(0)
+            json.dump(
+                {
+                    "schema": "aisketcher.host-lease/v1",
+                    "pid": os.getpid(),
+                    "session_id": session_id,
+                    "acquired_at_unix": time.time(),
+                },
+                handle,
+                sort_keys=True,
+            )
+            handle.truncate()
+            handle.flush()
+            os.fsync(handle.fileno())
+            yield
+        finally:
+            if acquired:
+                with suppress(OSError):
+                    if lock_kind == "posix":
+                        lock_module.flock(handle.fileno(), lock_module.LOCK_UN)
+                    else:
+                        handle.seek(0)
+                        lock_module.locking(
+                            handle.fileno(),
+                            lock_module.LK_UNLCK,
+                            1,
+                        )
+            handle.close()
 
 
 class StudioFactory(Protocol):
@@ -440,9 +572,7 @@ class RunRegistry:
         with self._lock:
             self._prune()
             matching = [
-                record
-                for record in self._records.values()
-                if record.session_id == session_id
+                record for record in self._records.values() if record.session_id == session_id
             ]
             if not matching:
                 return None
@@ -703,8 +833,7 @@ def _reject_undeclared_replay_files(
     root = destination.resolve()
     expected = {manifest_path.resolve().relative_to(root).as_posix()}
     expected.update(
-        artifact.resolve().relative_to(root).as_posix()
-        for _relative, artifact in artifacts
+        artifact.resolve().relative_to(root).as_posix() for _relative, artifact in artifacts
     )
     actual = {
         path.resolve().relative_to(root).as_posix()
@@ -818,8 +947,7 @@ def _accepts_any_keyword(function: Callable[..., Any], names: Sequence[str]) -> 
         inspect.Parameter.KEYWORD_ONLY,
     }
     return any(
-        name in signature.parameters
-        and signature.parameters[name].kind in keyword_kinds
+        name in signature.parameters and signature.parameters[name].kind in keyword_kinds
         for name in names
     )
 
@@ -921,13 +1049,11 @@ def _validate_refinement_payload(
 
     if len(original_prompt) > MAX_PROMPT_CHARS:
         raise StudioAppError(
-            "Refinement would make the original prompt exceed the "
-            "10,000-character prompt limit."
+            "Refinement would make the original prompt exceed the 10,000-character prompt limit."
         )
     if len(model_prompt) > MAX_PROMPT_CHARS:
         raise StudioAppError(
-            "Refinement would make the model prompt exceed the "
-            "10,000-character prompt limit."
+            "Refinement would make the model prompt exceed the 10,000-character prompt limit."
         )
     try:
         encoded_metadata = json.dumps(
@@ -937,13 +1063,9 @@ def _validate_refinement_payload(
             separators=(",", ":"),
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise StudioAppError(
-            "Refinement metadata must contain JSON-compatible values."
-        ) from exc
+        raise StudioAppError("Refinement metadata must contain JSON-compatible values.") from exc
     if len(encoded_metadata) > MAX_PROMPT_METADATA_BYTES:
-        raise StudioAppError(
-            "Refinement would exceed the 20,000-byte prompt metadata limit."
-        )
+        raise StudioAppError("Refinement would exceed the 20,000-byte prompt metadata limit.")
 
 
 def _translation_unavailable_message(language: str) -> str:
@@ -1005,6 +1127,24 @@ def _recipe(steps: int, guidance: float) -> Any:
     except (ImportError, AttributeError):
         return StudioRecipe(steps=int(steps), guidance_scale=float(guidance))
     return Recipe(steps=int(steps), guidance_scale=float(guidance))
+
+
+def _effective_generation_recipe(
+    preset: str,
+    steps: int,
+    guidance: float,
+) -> tuple[int, float]:
+    """Return controls that truthfully match the selected backend profile.
+
+    FLUX.2 Klein is a distilled four-step checkpoint. Its backend rejects any
+    resolved recipe that diverges from the validated 4-step, CFG-1 profile, so
+    crafted callbacks and stale browser state are normalized here as well as in
+    the UI.
+    """
+
+    if preset.startswith(FLUX2_KLEIN_PRESET_PREFIX):
+        return 4, 1.0
+    return int(steps), float(guidance)
 
 
 def _candidate_items(study: Any) -> list[Any]:
@@ -1120,7 +1260,12 @@ class AppController:
         workspace_root: str | Path | None = None,
         guided_root: str | Path | None = None,
         registry: RunRegistry | None = None,
+        host_lease_path: str | Path | None = None,
+        host_lease_timeout_seconds: float = DEFAULT_CROSS_PROCESS_LEASE_TIMEOUT_SECONDS,
     ) -> None:
+        lease_timeout = float(host_lease_timeout_seconds)
+        if not math.isfinite(lease_timeout) or lease_timeout <= 0:
+            raise ValueError("host_lease_timeout_seconds must be a positive finite number")
         self._owns_workspace_root = workspace_root is None
         if workspace_root is None:
             workspace_root = tempfile.mkdtemp(prefix="aisketcher-studio-")
@@ -1138,13 +1283,20 @@ class AppController:
         # dependency is imported and no model file is downloaded until Hangul
         # is actually submitted. Applications may inject another translator.
         self.prompt_translator = (
-            prompt_translator
-            if prompt_translator is not None
-            else MarianKoreanEnglishTranslator()
+            prompt_translator if prompt_translator is not None else M2M100KoreanEnglishTranslator()
         )
+        lease_path = (
+            _default_host_lease_path()
+            if host_lease_path is None
+            else Path(host_lease_path).expanduser().resolve()
+        )
+        self._host_lease = _CrossProcessFileLease(lease_path)
+        self._host_lease_timeout_seconds = lease_timeout
         self.guided = GuidedSampleCatalog(guided_root)
         self._operation_lock = threading.RLock()
         self._operation_tokens: dict[str, threading.Event] = {}
+        self._operation_ids: dict[str, str] = {}
+        self._operation_kinds: dict[str, str] = {}
         self._operation_targets: dict[str, Any] = {}
         self._claimed_operation_tokens: dict[str, threading.Event] = {}
 
@@ -1165,11 +1317,14 @@ class AppController:
         return installer
 
     def plan_model_install(self, preset: str) -> Any | None:
-        """Return the installer's current cache-only plan when it supports one.
+        """Return a latency-safe display plan when the installer supports one.
 
         Custom callable installers predate the explicit planning API, so the
         Studio treats a missing or unusable ``plan_install`` method as a signal
-        to retain its static, backwards-compatible model guidance.
+        to retain its static, backwards-compatible model guidance. The bundled
+        manager receives ``verify_cache=False`` here: opening Studio must never
+        hide the page behind a multi-GB integrity pass. The explicit model
+        preparation action performs the authoritative SHA-256 verification.
         """
 
         try:
@@ -1180,32 +1335,90 @@ class AppController:
         if not callable(plan_install):
             return None
         try:
-            return plan_install(preset)
+            return _call_supported(plan_install, preset, verify_cache=False)
         except Exception:  # noqa: BLE001 - optional installer compatibility boundary
             return None
 
     def begin_operation(self, state_value: Mapping[str, Any] | AppState | None) -> threading.Event:
         """Create or reuse the per-session cooperative cancellation token."""
 
+        _operation_id, operation_event = self._start_operation(state_value)
+        return operation_event
+
+    def start_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        *,
+        kind: str = "generation",
+    ) -> str:
+        """Return a stable ticket for one queued browser operation.
+
+        Gradio runs the immediate button callback before it dispatches the
+        queued Python job.  The ticket crosses that gap so a Stop click can
+        tombstone the exact queued request.  A later retry receives a new
+        ticket; a delayed callback carrying the old ticket can therefore never
+        claim the retry's fresh cancellation token.
+        """
+
+        operation_id, _operation_event = self._start_operation(state_value, kind=kind)
+        return operation_id
+
+    def _start_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        *,
+        kind: str = "generation",
+    ) -> tuple[str, threading.Event]:
+        if kind not in {"generation", "model"}:
+            raise ValueError("operation kind must be generation or model")
         state = AppState.from_payload(state_value)
         with self._operation_lock:
             operation_event = self._operation_tokens.get(state.session_id)
-            if operation_event is None or operation_event.is_set():
+            claimed = state.session_id in self._claimed_operation_tokens
+            if operation_event is None or (operation_event.is_set() and not claimed):
                 operation_event = threading.Event()
                 self._operation_tokens[state.session_id] = operation_event
-            return operation_event
+                self._operation_ids[state.session_id] = uuid.uuid4().hex
+                self._operation_kinds[state.session_id] = kind
+            operation_id = self._operation_ids.get(state.session_id)
+            if operation_id is None:
+                operation_id = uuid.uuid4().hex
+                self._operation_ids[state.session_id] = operation_id
+            self._operation_kinds.setdefault(state.session_id, kind)
+            return operation_id, operation_event
 
-    def claim_operation(self, state_value: Mapping[str, Any] | AppState | None) -> threading.Event:
+    def claim_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        operation_id: str | None = None,
+    ) -> threading.Event:
         """Claim one server operation for a session, rejecting duplicate clicks."""
 
         state = AppState.from_payload(state_value)
         with self._operation_lock:
+            operation_event = self._operation_tokens.get(state.session_id)
+            current_id = self._operation_ids.get(state.session_id)
+            if operation_id is not None and current_id != operation_id:
+                raise StudioJobCancelled(text(state.language, "status_stopped"))
             if state.session_id in self._claimed_operation_tokens:
                 raise StudioAppError(text(state.language, "generation_already_running"))
-            operation_event = self._operation_tokens.get(state.session_id)
-            if operation_event is None or operation_event.is_set():
+            if operation_id is not None:
+                if (
+                    operation_event is None
+                    or operation_event.is_set()
+                    or current_id != operation_id
+                ):
+                    raise StudioJobCancelled(text(state.language, "status_stopped"))
+            elif operation_event is not None and operation_event.is_set():
+                # A direct caller may use begin_operation()/cancel_operation()
+                # without a browser ticket.  Preserve the cancelled token as a
+                # tombstone instead of silently resurrecting that queued call.
+                raise StudioJobCancelled(text(state.language, "status_stopped"))
+            elif operation_event is None:
                 operation_event = threading.Event()
                 self._operation_tokens[state.session_id] = operation_event
+                self._operation_ids[state.session_id] = uuid.uuid4().hex
+                self._operation_kinds[state.session_id] = "generation"
             self._claimed_operation_tokens[state.session_id] = operation_event
             return operation_event
 
@@ -1220,22 +1433,41 @@ class AppController:
         with self._operation_lock:
             if self._operation_tokens.get(state.session_id) is operation_event:
                 self._operation_tokens.pop(state.session_id, None)
+                self._operation_ids.pop(state.session_id, None)
+                self._operation_kinds.pop(state.session_id, None)
                 self._operation_targets.pop(state.session_id, None)
             if self._claimed_operation_tokens.get(state.session_id) is operation_event:
                 self._claimed_operation_tokens.pop(state.session_id, None)
 
-    def clear_operation(self, state_value: Mapping[str, Any] | AppState | None) -> None:
+    def clear_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        operation_id: str | None = None,
+    ) -> None:
         """Drop UI bookkeeping after a queued event completes or is cancelled."""
 
         state = AppState.from_payload(state_value)
         with self._operation_lock:
+            if (
+                operation_id is not None
+                and self._operation_ids.get(state.session_id) != operation_id
+            ):
+                return
             # A Stop click can cancel Gradio's queued event while the backend
             # thread is still unwinding. Keep that active claim and its token
             # until ``finish_operation`` runs so a quick second click cannot
             # overlap the first GPU job.
             if state.session_id not in self._claimed_operation_tokens:
-                self._operation_tokens.pop(state.session_id, None)
-                self._operation_targets.pop(state.session_id, None)
+                operation_event = self._operation_tokens.get(state.session_id)
+                if (
+                    operation_id is not None
+                    or operation_event is None
+                    or not operation_event.is_set()
+                ):
+                    self._operation_tokens.pop(state.session_id, None)
+                    self._operation_ids.pop(state.session_id, None)
+                    self._operation_kinds.pop(state.session_id, None)
+                    self._operation_targets.pop(state.session_id, None)
 
     def operation_state(
         self,
@@ -1253,6 +1485,16 @@ class AppController:
                 return "stopping" if claimed else "idle"
             return "running"
 
+    def operation_kind(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+    ) -> str | None:
+        """Return the active UI operation family for reconnect-safe controls."""
+
+        state = AppState.from_payload(state_value)
+        with self._operation_lock:
+            return self._operation_kinds.get(state.session_id)
+
     def _set_operation_target(self, state: AppState, target: Any) -> None:
         with self._operation_lock:
             self._operation_targets[state.session_id] = target
@@ -1263,7 +1505,7 @@ class AppController:
         state: AppState,
         operation_event: threading.Event,
     ) -> Iterator[None]:
-        """Serialize accelerator work across every controller in this process."""
+        """Serialize accelerator/cache work across local Studio processes."""
 
         with _PROCESS_GENERATION_STATE_LOCK:
             if state.session_id in _PROCESS_ACTIVE_GENERATION_SESSIONS:
@@ -1275,7 +1517,27 @@ class AppController:
                 self._check_cancelled(operation_event)
                 acquired = _PROCESS_GENERATION_LOCK.acquire(timeout=0.1)
             self._check_cancelled(operation_event)
-            yield
+            try:
+                with self._host_lease.acquire(
+                    cancellation_event=operation_event,
+                    timeout_seconds=self._host_lease_timeout_seconds,
+                    session_id=state.session_id,
+                ):
+                    self._check_cancelled(operation_event)
+                    yield
+            except StudioJobCancelled as exc:
+                raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
+            except TimeoutError as exc:
+                message = (
+                    "Another AIsketcher process is still using this GPU or model cache. "
+                    "Wait for it to finish, or stop that process and retry."
+                    if state.language == "en"
+                    else (
+                        "다른 AIsketcher 프로세스가 이 GPU 또는 모델 캐시를 사용 중입니다. "
+                        "작업이 끝날 때까지 기다리거나 해당 프로세스를 중지한 뒤 다시 시도하세요."
+                    )
+                )
+                raise StudioAppError(message) from exc
         finally:
             if acquired:
                 _PROCESS_GENERATION_LOCK.release()
@@ -1306,7 +1568,7 @@ class AppController:
                 with suppress(Exception):
                     close()
         with suppress(Exception):
-            import torch  # type: ignore[import-not-found]
+            import torch
 
             cuda = getattr(torch, "cuda", None)
             if cuda is not None and callable(getattr(cuda, "empty_cache", None)):
@@ -1341,11 +1603,20 @@ class AppController:
                 # shared token remains the authoritative cooperative hook.
                 return
 
-    def cancel_operation(self, state_value: Mapping[str, Any] | AppState | None) -> str:
+    def cancel_operation(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        operation_id: str | None = None,
+    ) -> str:
         """Stop this session's queued/running work and notify optional providers."""
 
         state = AppState.from_payload(state_value)
         with self._operation_lock:
+            if (
+                operation_id is not None
+                and self._operation_ids.get(state.session_id) != operation_id
+            ):
+                return text(state.language, "status_stopped")
             operation_event = self._operation_tokens.get(state.session_id)
             if operation_event is not None:
                 operation_event.set()
@@ -1371,6 +1642,14 @@ class AppController:
     def close(self) -> None:
         """Remove run data and the auto-created Studio workspace, if any."""
 
+        with self._operation_lock:
+            for operation_event in self._operation_tokens.values():
+                operation_event.set()
+            self._operation_tokens.clear()
+            self._operation_ids.clear()
+            self._operation_kinds.clear()
+            self._operation_targets.clear()
+            self._claimed_operation_tokens.clear()
         self.registry.clear()
         if self._owns_workspace_root:
             shutil.rmtree(self.workspace_root, ignore_errors=True)
@@ -1452,9 +1731,18 @@ class AppController:
         *,
         language: str,
         enhance_for_design_edit: bool = False,
+        operation_event: threading.Event | None = None,
     ) -> NormalizedPrompt:
-        """Normalize a user prompt before any model or GPU work begins."""
+        """Normalize a user prompt within the owning operation's lifetime.
 
+        Translation providers are not required to implement cooperative
+        cancellation.  Checking the same per-session token immediately before
+        and after normalization guarantees that a Stop received while a
+        blocking translator is running can never fall through into generation.
+        """
+
+        if operation_event is not None:
+            self._check_cancelled(operation_event)
         try:
             result = normalize_prompt(
                 prompt,
@@ -1462,9 +1750,13 @@ class AppController:
                 enhance_for_design_edit=enhance_for_design_edit,
             )
         except Exception as exc:  # noqa: BLE001 - optional translator boundary
+            if operation_event is not None and operation_event.is_set():
+                raise StudioJobCancelled(text(language, "status_stopped")) from exc
             if contains_hangul(prompt):
                 raise StudioAppError(_translation_unavailable_message(language)) from exc
             raise StudioAppError(f"The creative brief could not be prepared: {exc}") from exc
+        if operation_event is not None:
+            self._check_cancelled(operation_event)
         if not result.model_ready:
             raise StudioAppError(_translation_unavailable_message(language))
         return result
@@ -1484,6 +1776,7 @@ class AppController:
         steps: int,
         guidance: float,
         locks: Sequence[str],
+        operation_id: str | None = None,
     ) -> AppResponse:
         state = AppState.from_payload(state_value)
         if not image_path:
@@ -1503,19 +1796,21 @@ class AppController:
             raise StudioAppError("Outputs must be 1, 4, or 8.")
         if structure not in {"loose", "balanced", "faithful"}:
             raise StudioAppError("Choose a valid structure setting.")
-        normalized = self._normalize_model_prompt(
-            prompt,
-            language=state.language,
-            enhance_for_design_edit=preset.startswith("flux2-klein-edit@"),
-        )
-        model_prompt = normalized.require_model_prompt()
-        prompt_metadata = _normalization_metadata(normalized)
-        operation_event = self.claim_operation(state)
+        steps, guidance = _effective_generation_recipe(preset, steps, guidance)
+        operation_event = self.claim_operation(state, operation_id)
         session_dir = _safe_session_dir(self.workspace_root, state.session_id)
         run_id = uuid.uuid4().hex
         run_dir = session_dir / run_id
         studio: Any = None
         try:
+            normalized = self._normalize_model_prompt(
+                prompt,
+                language=state.language,
+                enhance_for_design_edit=preset.startswith("flux2-klein-edit@"),
+                operation_event=operation_event,
+            )
+            model_prompt = normalized.require_model_prompt()
+            prompt_metadata = _normalization_metadata(normalized)
             with self._generation_slot(state, operation_event):
                 self._check_cancelled(operation_event)
                 source = sanitize_upload(image_path, run_dir)
@@ -1722,7 +2017,9 @@ class AppController:
             try:
                 pick(index)
             except Exception as exc:  # noqa: BLE001 - optional backend boundary
-                raise StudioAppError(f"The selected direction could not be recorded: {exc}") from exc
+                raise StudioAppError(
+                    f"The selected direction could not be recorded: {exc}"
+                ) from exc
         state = state.replace(selected_index=index)
         candidate = record.candidates[index]
         record.status_key = "status_selected"
@@ -1739,6 +2036,7 @@ class AppController:
         strength: str,
         locks: Sequence[str],
         additional_instruction: str = "",
+        operation_id: str | None = None,
     ) -> AppResponse:
         state = AppState.from_payload(state_value)
         record = self.registry.get(state.run_id, state.session_id)
@@ -1760,23 +2058,33 @@ class AppController:
             instruction = (
                 "Polish the selected direction while preserving its core idea and structure."
             )
-        normalized_instruction = self._normalize_model_prompt(
-            instruction,
-            language=state.language,
-        )
-        model_instruction = normalized_instruction.require_model_prompt()
         pick = getattr(record.study, "pick", None)
-        vary = getattr(record.studio, "vary", None)
-        if not callable(pick) or not callable(vary):
+        if not callable(pick):
             raise StudioAppError("The active backend does not support pick-and-vary yet.")
-        operation_event = self.claim_operation(state)
+        operation_event = self.claim_operation(state, operation_id)
         preset = str(record.request.get("preset") or "")
         new_id = uuid.uuid4().hex
         destination = record.workspace.parent / new_id
         owns_studio = False
+        active_studio: Any = None
         try:
+            normalized_instruction = self._normalize_model_prompt(
+                instruction,
+                language=state.language,
+                operation_event=operation_event,
+            )
+            model_instruction = normalized_instruction.require_model_prompt()
             with self._generation_slot(state, operation_event):
-                self._set_operation_target(state, record.studio)
+                # A cancelled/OOM run evicts and closes the pooled runtime. Older
+                # RunRecords intentionally retain their immutable Study data, but
+                # must reacquire the current preset runtime before variation.
+                # Otherwise one session's cancellation poisons every completed
+                # run that still points at the evicted Studio instance.
+                active_studio = self.pool.get(preset) if preset else record.studio
+                vary = getattr(active_studio, "vary", None)
+                if not callable(vary):
+                    raise StudioAppError("The active backend does not support pick-and-vary yet.")
+                self._set_operation_target(state, active_studio)
                 owns_studio = True
                 self._check_cancelled(operation_event)
                 selected = pick(state.selected_index)
@@ -1785,10 +2093,7 @@ class AppController:
                 if not isinstance(original_prompt, str) or not original_prompt.strip():
                     original_prompt = str(record.request.get("brief") or "").strip()
                 original_model_prompt = getattr(original_recipe, "model_prompt", None)
-                if (
-                    not isinstance(original_model_prompt, str)
-                    or not original_model_prompt.strip()
-                ):
+                if not isinstance(original_model_prompt, str) or not original_model_prompt.strip():
                     original_model_prompt = str(
                         record.request.get("model_prompt") or original_prompt
                     ).strip()
@@ -1804,9 +2109,7 @@ class AppController:
                     normalization=normalized_instruction,
                 )
                 user_instruction_label = (
-                    "추가 발전 지시"
-                    if state.language == "ko"
-                    else "Refinement instruction"
+                    "추가 발전 지시" if state.language == "ko" else "Refinement instruction"
                 )
                 composed_original_prompt = (
                     f"{original_prompt.rstrip()}\n\n{user_instruction_label}: {instruction}"
@@ -1883,9 +2186,9 @@ class AppController:
         except StudioJobCancelled:
             if owns_studio:
                 if preset:
-                    self._recover_accelerator_failure(preset, record.studio)
+                    self._recover_accelerator_failure(preset, active_studio)
                 else:
-                    self._release_accelerator_memory(record.studio)
+                    self._release_accelerator_memory(active_studio)
             shutil.rmtree(destination, ignore_errors=True)
             raise
         except StudioAppError:
@@ -1896,15 +2199,15 @@ class AppController:
             if operation_event.is_set():
                 if owns_studio:
                     if preset:
-                        self._recover_accelerator_failure(preset, record.studio)
+                        self._recover_accelerator_failure(preset, active_studio)
                     else:
-                        self._release_accelerator_memory(record.studio)
+                        self._release_accelerator_memory(active_studio)
                 raise StudioJobCancelled(text(state.language, "status_stopped")) from exc
             if self._is_accelerator_oom(exc):
                 if preset:
-                    self._recover_accelerator_failure(preset, record.studio)
+                    self._recover_accelerator_failure(preset, active_studio)
                 else:
-                    self._release_accelerator_memory(record.studio)
+                    self._release_accelerator_memory(active_studio)
                 raise StudioAppError(text(state.language, "gpu_out_of_memory")) from exc
             raise StudioAppError(f"Variation failed: {exc}") from exc
         finally:
@@ -1929,7 +2232,7 @@ class AppController:
             source_path=source,
             candidates=candidates,
             study=varied,
-            studio=record.studio,
+            studio=active_studio,
             prepared=record.prepared,
             request=request,
             status_key="status_variation",
@@ -1945,7 +2248,11 @@ class AppController:
             status=self._status(new_record, state),
         )
 
-    def try_again(self, state_value: Mapping[str, Any] | AppState | None) -> AppResponse:
+    def try_again(
+        self,
+        state_value: Mapping[str, Any] | AppState | None,
+        operation_id: str | None = None,
+    ) -> AppResponse:
         """Start another exploration from the recorded request."""
 
         state = AppState.from_payload(state_value)
@@ -1973,6 +2280,7 @@ class AppController:
             int(request["steps"]),
             float(request["guidance"]),
             tuple(request["locks"]),
+            operation_id,
         )
 
     def export(self, state_value: Mapping[str, Any] | AppState | None) -> tuple[str, str]:
@@ -1982,8 +2290,7 @@ class AppController:
         if record.guided_sample is not None:
             shutil.rmtree(export_dir, ignore_errors=True)
             export_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(record.guided_sample.manifest_path, export_dir / "manifest.json")
-            _, artifacts = _load_replay_bundle(
+            manifest, artifacts = _load_replay_bundle(
                 record.guided_sample.manifest_path,
                 uploaded_json=False,
             )
@@ -1991,6 +2298,28 @@ class AppController:
                 target = export_dir / Path(*relative.parts)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(artifact, target)
+            notice_source = record.guided_sample.root / "ARTWORK_NOTICE.md"
+            if not notice_source.is_file():
+                raise StudioAppError("Guided Sample artwork notice is not bundled.")
+            notice_target = export_dir / "ARTWORK_NOTICE.md"
+            shutil.copy2(notice_source, notice_target)
+            manifest_files = manifest.get("files")
+            if not isinstance(manifest_files, dict):
+                raise StudioAppError("Guided Sample manifest has no mutable file table.")
+            manifest_files["artwork_notice"] = {
+                "path": "ARTWORK_NOTICE.md",
+                "sha256": _file_sha256(notice_target),
+            }
+            (export_dir / "manifest.json").write_text(
+                json.dumps(
+                    manifest,
+                    indent=2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             _load_replay_bundle(export_dir / "manifest.json", uploaded_json=False)
         else:
             export_method = getattr(record.study, "export", None)
@@ -2053,11 +2382,12 @@ class AppController:
         state_value: Mapping[str, Any] | AppState | None,
         manifest_path: str | Path | None,
         preset: str,
+        operation_id: str | None = None,
     ) -> AppResponse:
         state = AppState.from_payload(state_value)
         if not manifest_path:
             raise StudioAppError("Choose a manifest JSON or export ZIP first.")
-        operation_event = self.claim_operation(state)
+        operation_event = self.claim_operation(state, operation_id)
         session_dir = _safe_session_dir(self.workspace_root, state.session_id)
         run_id = uuid.uuid4().hex
         run_dir = session_dir / run_id
@@ -2156,6 +2486,7 @@ class AppController:
         confirmed: bool,
         language: str = "en",
         state_value: Mapping[str, Any] | AppState | None = None,
+        operation_id: str | None = None,
     ) -> str:
         if not confirmed:
             raise StudioAppError(
@@ -2172,7 +2503,7 @@ class AppController:
             if state_value is not None
             else AppState.new(language)
         )
-        operation_event = self.claim_operation(state)
+        operation_event = self.claim_operation(state, operation_id)
         try:
             # Cache writes and provider initialization share the same process
             # slot as generation. A queued session therefore owns only its

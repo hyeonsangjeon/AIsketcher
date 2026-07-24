@@ -136,17 +136,25 @@ An uncached model selection opens a preparation step before network access.
 Review the pinned repositories and revisions, expected transfer, cache
 destination, device guidance, and upstream licenses, then select
 **Review & prepare model**. That explicit confirmation prepares both the
-selected image model and the pinned 315 MB Korean→English helper when either is
-missing. Returning to the sample or leaving setup before pressing that button
-starts no download.
+selected image model and the pinned MIT-licensed `facebook/m2m100_418M`
+Korean→English helper when either is missing. The helper is pinned to revision
+`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636` and adds about 1.9 GB when it is
+not cached. It also streams every cached image-model runtime file through its
+reviewed size and SHA-256 policy once per Studio process before allowing a
+backend load.
+On the validated T4, checking the roughly 16.2 GB FLUX cache can take up to
+about one minute with no network transfer; the process then reuses that
+verification receipt. Returning to the sample or leaving setup before pressing
+the button starts no download or integrity pass.
 
-**Stop** cancels generation cooperatively. Image-model preparation stops at the
-next curated selected-file boundary; a tensor file already in transfer finishes
-before the stop is observed. Complete marked image-model entries remain
-available, incomplete unmarked image-model destinations are removed, and
-**Retry** downloads only what is still missing. Korean-helper setup checks Stop
-between tokenizer and model loading and reuses files for its pinned revision;
-it does not use the image-model marker-and-cleanup format.
+**Stop** cancels generation cooperatively. Image-model preparation checks it at
+streamed hash chunks and curated selected-file boundaries; a provider transfer
+already in progress may finish before the next boundary. A stopped read-only
+cache check leaves existing files for retry, while a failed fresh download
+removes only its incomplete managed destination. Korean-helper setup checks
+Stop at each of its seven runtime-file boundaries, during hashing, and between
+tokenizer and model loading. It reuses files for its pinned revision; it does
+not use the image-model marker-and-cleanup format.
 If the page reconnects to the same live browser session, Studio restores the
 running or stopping job and its Stop control; refreshing by itself never
 cancels GPU work. If the temporary server has ended, the recovery layer tells
@@ -159,10 +167,12 @@ estimate; it is not a timeout.
 Studio keeps the user’s original creative brief distinct from the prompt sent
 to the image model. English needs no translation; the FLUX.2 path can still add
 its deterministic reference-edit constraints. Korean is translated with the
-pinned local Korean-to-English adapter only after that helper has been
-explicitly prepared. Both forms and the translator revision are recorded. If
-the helper is unavailable, Studio stops before model/GPU work and preserves the
-Korean original instead of silently sending unsupported text.
+pinned local M2M100 Korean-to-English adapter only after that helper has been
+explicitly prepared. Recognized visual-design terms are protected with a
+deterministic glossary before translation. The exact original, prepared
+English, helper ID, and immutable revision are recorded as prompt provenance.
+If the helper is unavailable, Studio stops before model/GPU work and preserves
+the Korean original instead of silently sending unsupported text.
 
 The result area shows four large direction cards without an inner scrollbar.
 Refining a live result opens an additional-instruction field. Refining the

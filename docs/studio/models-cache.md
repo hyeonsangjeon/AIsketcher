@@ -12,7 +12,7 @@ preset’s license, files, cache destination, and estimated download size.
 | FLUX.2 Klein Edit — recommended | `flux2-klein-edit@1` | fast sketch rendering, photo restyling, and instruction edits on a 16 GB NVIDIA T4 | about 16.2 GB |
 | SDXL Canny Lite — legacy | `sdxl-canny-lite@1` | replay existing SDXL manifests and lower-memory edge conditioning | about 7.3 GB |
 | SDXL Canny Quality — legacy | `sdxl-canny@1` | replay existing full-ControlNet SDXL recipes | about 9.4 GB |
-| Korean→English helper | pinned local adapter | prepare model-facing English while preserving Korean input | about 315 MB when absent |
+| Korean→English helper | pinned `facebook/m2m100_418M` adapter | protect recognized design terms, then prepare model-facing English while preserving Korean input | about 1.9 GB when absent |
 
 FLUX.2 Klein Edit is the default for new live studies. It uses the uploaded
 image as a reference and does not use Canny ControlNet. The two SDXL presets
@@ -31,7 +31,8 @@ performs no network access.
 
 ## Pinned repositories
 
-The curated presets use immutable revisions of:
+The curated image presets and local translation helper use immutable revisions
+of:
 
 | Preset | Role | Repository | Revision |
 | --- | --- | --- | --- |
@@ -40,11 +41,14 @@ The curated presets use immutable revisions of:
 | SDXL Canny legacy | base | `stabilityai/stable-diffusion-xl-base-1.0` | `462165984030d82259a11f4367a4eed129e94a7b` |
 | SDXL Canny legacy | lite control | `diffusers/controlnet-canny-sdxl-1.0-small` | `edd85f64c5f87dfb6d73762949d9daca16389518` |
 | SDXL Canny legacy | quality control | `diffusers/controlnet-canny-sdxl-1.0` | `eb115a19a10d14909256db740ed109532ab1483c` |
+| Korean→English helper | translation | `facebook/m2m100_418M` | `55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636` |
 
-Loading is restricted to SafeTensors with remote code disabled. A mutable branch
-name is not sufficient for a replayable preset. FLUX.2 Klein’s pinned weights
-are Apache-2.0; the legacy SDXL components retain their pinned upstream
-OpenRAIL terms.
+Image-model loading is restricted to SafeTensors with remote code disabled. A
+mutable branch name is not sufficient for a replayable preset. FLUX.2 Klein’s
+pinned weights are Apache-2.0; the legacy SDXL components retain their pinned
+upstream OpenRAIL terms. The Korean→English helper is MIT-licensed and uses its
+pinned PyTorch state dictionary through the weights-only loader; its license is
+shown separately from the selected image model's license during preparation.
 
 FLUX.2 Klein Edit resolves to at most 1024 × 1024, four steps, guidance 1.0,
 the Flow Match Euler scheduler, and reference-image control. The two SDXL
@@ -92,13 +96,22 @@ complete schema.
 Removing a cache is an explicit user operation. The Studio reports what will be
 removed and does not delete unrelated model caches.
 
-The pinned Marian Korean→English revision publishes a PyTorch weights file.
-During that one model load AIsketcher disables Transformers’ optional
-background SafeTensors conversion helper. This prevents an independently
-moving `refs/pr/*` conversion artifact from being fetched, keeps the reviewed
-revision authoritative, and keeps the first-transfer estimate near 315 MB.
+The pinned M2M100 Korean→English revision publishes seven runtime files:
+weights, model and generation configuration, and tokenizer vocabulary/config.
+AIsketcher verifies the reviewed size and SHA-256 of every one before loading
+the local snapshot, and disables Transformers’ optional background SafeTensors
+conversion helper during that load. This prevents an independently moving
+`refs/pr/*` conversion artifact from being fetched and keeps the reviewed
+revision authoritative. The exact allow-listed first transfer is about 1.9 GB.
 Any pre-existing process policy for that Transformers setting is restored
 immediately afterward.
+
+Before tokenization, a deterministic glossary replaces recognized Korean
+visual-design terms with their reviewed English production vocabulary. Studio
+then runs Korean→English translation locally and records the exact source text,
+prepared English, helper ID, and immutable revision as separate prompt
+provenance. The glossary is intentionally bounded and does not imply that every
+Korean phrase will translate perfectly.
 
 ## First download, Stop, and retry
 
@@ -107,26 +120,39 @@ the repositories, immutable revisions, expected transfer, destination,
 license, and device guidance, then confirm the separate download action.
 `allow_downloads: true` permits this flow but is never consent by itself.
 
-During image-model preparation, **Stop** requests cancellation after the
-current transfer, at the next curated selected-file boundary. It does not
-interrupt and trust a partial tensor file. A complete, pinned and allow-listed
-image-model component receives its AIsketcher marker and stays cached. An
-incomplete, unmarked image-model destination is removed instead of being
-treated as installed. Selecting the model again rebuilds the plan, skips every
-valid marked component, and retries only missing files. A failed download for
-one image model does not remove another installed preset.
+During image-model preparation, **Stop** is checked between selected download
+groups and between streamed SHA-256 chunks. It never turns a partial or
+unverified tensor into a usable cache. Stopping a read-only integrity pass
+leaves the existing files in place for a later retry. A failed fresh download
+removes only that incomplete managed destination; it never removes another
+installed preset or follows a symlink outside the managed cache.
 
 The Korean helper uses the pinned Transformers cache below `translation/`
 rather than AIsketcher image-model markers. Its cooperative Stop check occurs
-between the tokenizer and model load boundaries. A later retry can reuse files
-already present for the same immutable revision, but the image-model
-marker-and-cleanup guarantee above does not apply to that cache format.
+at every reviewed file boundary, during streamed hashing, and between the
+tokenizer and model loads. A later retry can reuse files already present for
+the same immutable revision, but the image-model marker-and-cleanup guarantee
+above does not apply to that cache format.
 
-The completion marker records the exact repository, immutable revision,
-allowlist and safe-loading policy. It is not a claim that v0.3 rehashes every
-multi-gigabyte weight on every startup. The curated registry records reviewed
-upstream LFS SHA-256 digests for auditing, while normal cache reuse validates
-the marker, required files and unsafe-file exclusions.
+The completion marker uses the versioned `aisketcher-model-cache` schema and
+records the repository, immutable revision, allowlist, hash policy, reviewed
+artifact sizes and SHA-256 values, and the verified file-stat fingerprint. The
+marker is provenance, not an authentication token: a fresh Studio process does
+not trust it by itself. Policy v2 streams every exact curated runtime file —
+configuration, scheduler, tokenizer, index, and LFS weight payloads — through
+the reviewed SHA-256 policy before the backend may load it. A process-local
+receipt then permits fast reuse only while the marker and every verified
+file's size, modification/change time, device and inode remain unchanged.
+Legacy markers are fully verified and upgraded; a forged marker, configuration
+edit, or same-size tamper is rejected.
+
+Opening Studio uses a non-verifying display plan so a multi-gigabyte hash pass
+cannot hide the page behind a connection delay. Until **Review & prepare
+model** finishes, an existing cache may therefore appear as **Not yet verified
+· download if absent** and the displayed transfer is a conservative maximum,
+not proof that it will be downloaded. On the validated T4, checking the
+roughly 16.2 GB FLUX cache took up to about one minute with zero network
+transfer. The same process reuses its receipt immediately afterward.
 
 After a successful first download, later Studio sessions load the same pinned
 files from the configured local cache; they do not redownload them merely

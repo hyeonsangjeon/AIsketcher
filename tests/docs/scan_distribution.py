@@ -10,7 +10,15 @@ import zipfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-WEIGHT_SUFFIXES = {".ckpt", ".pt", ".pth", ".safetensors"}
+WEIGHT_SUFFIXES = {
+    ".bin",
+    ".ckpt",
+    ".gguf",
+    ".onnx",
+    ".pt",
+    ".pth",
+    ".safetensors",
+}
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 SECRET_PATTERNS = {
     "AWS access key": re.compile(rb"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
@@ -64,7 +72,7 @@ REPOSITORY_IGNORED_PARTS = frozenset(
         "tmp",
     }
 )
-MAX_REPOSITORY_SCAN_BYTES = 20 * 1024 * 1024
+MAX_DISTRIBUTION_FILE_BYTES = 20 * 1024 * 1024
 
 
 def archive_entries(path: Path) -> Iterator[tuple[str, bytes]]:
@@ -83,6 +91,28 @@ def archive_entries(path: Path) -> Iterator[tuple[str, bytes]]:
                     if fileobj is not None:
                         yield member.name, fileobj.read()
         return
+
+    raise ValueError(f"unsupported distribution archive: {path}")
+
+
+def oversized_archive_entries(path: Path) -> list[tuple[str, int]]:
+    if path.suffix == ".whl" or zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            return [
+                (info.filename, info.file_size)
+                for info in archive.infolist()
+                if not info.is_dir()
+                and info.file_size > MAX_DISTRIBUTION_FILE_BYTES
+            ]
+
+    if tarfile.is_tarfile(path):
+        with tarfile.open(path, "r:*") as archive:
+            return [
+                (member.name, member.size)
+                for member in archive.getmembers()
+                if member.isfile()
+                and member.size > MAX_DISTRIBUTION_FILE_BYTES
+            ]
 
     raise ValueError(f"unsupported distribution archive: {path}")
 
@@ -117,7 +147,16 @@ def image_metadata(name: str, data: bytes) -> set[str]:
 
 
 def scan_archive(path: Path) -> list[str]:
-    failures: list[str] = []
+    oversized = oversized_archive_entries(path)
+    failures = [
+        (
+            f"{name}: file exceeds the {MAX_DISTRIBUTION_FILE_BYTES:,}-byte "
+            f"distribution limit ({size:,} bytes)"
+        )
+        for name, size in oversized
+    ]
+    if oversized:
+        return failures
     entries = list(archive_entries(path))
     for name, data in entries:
         normalized = "/" + name.replace("\\", "/")
@@ -186,12 +225,22 @@ def scan_repository(root: Path) -> list[str]:
         if not path.is_file() or path.is_symlink():
             continue
         try:
-            if path.stat().st_size > MAX_REPOSITORY_SCAN_BYTES:
+            size = path.stat().st_size
+            if size > MAX_DISTRIBUTION_FILE_BYTES:
+                failures.append(
+                    f"repository/{relative}: file exceeds the "
+                    f"{MAX_DISTRIBUTION_FILE_BYTES:,}-byte distribution "
+                    f"limit ({size:,} bytes)"
+                )
                 continue
             data = path.read_bytes()
         except OSError as exc:
             failures.append(f"repository/{relative}: cannot be read ({exc})")
             continue
+        if path.suffix.lower() in WEIGHT_SUFFIXES:
+            failures.append(
+                f"repository/{relative}: model weight files must not be distributed"
+            )
         for label, pattern in SECRET_PATTERNS.items():
             if pattern.search(data):
                 failures.append(f"repository/{relative}: contains a possible {label}")

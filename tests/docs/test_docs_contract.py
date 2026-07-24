@@ -85,6 +85,20 @@ def test_social_preview_has_explicit_non_execution_provenance() -> None:
     ]
     with image_module.open(preview_path) as opened:
         assert list(opened.size) == repository_preview["dimensions"] == [1280, 640]
+        metadata_keys = {
+            key.lower()
+            for key, value in opened.info.items()
+            if value not in (None, b"", "")
+        }
+        metadata_keys.discard("dpi")
+        assert not opened.getexif()
+        assert not metadata_keys & {
+            "exif",
+            "icc_profile",
+            "photoshop",
+            "xmp",
+            "xml",
+        }
 
     override = (DOCS / "overrides/main.html").read_text(encoding="utf-8")
     assert "og:image" in override

@@ -17,7 +17,7 @@ from PIL import Image
 
 from aisketcher.manifest import canonical_sha256
 from aisketcher.prompt_normalization import (
-    MarianKoreanEnglishTranslator,
+    M2M100KoreanEnglishTranslator,
     TranslatorMetadata,
 )
 from aisketcher.studio_app.i18n import navigation_choices, structure_choices, text
@@ -355,6 +355,13 @@ def test_guided_sample_export_round_trips_every_declared_artifact(tmp_path: Path
         assert "prepared/control.png" in names
         assert "scout/contact-sheet.png" in names
         assert {f"scout/scout-{index:02d}.png" for index in range(1, 5)} <= names
+        assert "ARTWORK_NOTICE.md" in names
+        exported_manifest = json.loads(archive.read("manifest.json"))
+        notice = exported_manifest["files"]["artwork_notice"]
+        assert notice["path"] == "ARTWORK_NOTICE.md"
+        assert notice["sha256"] == sha256(
+            archive.read("ARTWORK_NOTICE.md")
+        ).hexdigest()
 
     staged = prepare_replay_input(archive_path, tmp_path / "replay")
     payload = json.loads(staged.read_text(encoding="utf-8"))
@@ -861,6 +868,47 @@ def test_fake_studio_explore_select_refine_and_export(tmp_path: Path) -> None:
     }
 
 
+def test_flux_explore_normalizes_stale_or_crafted_recipe_controls(
+    tmp_path: Path,
+) -> None:
+    preset = "flux2-klein-edit@1"
+    studios: dict[str, FakeStudio] = {}
+
+    def factory(selected_preset: str) -> FakeStudio:
+        studio = FakeStudio(selected_preset)
+        studios[selected_preset] = studio
+        return studio
+
+    controller = AppController(studio_factory=factory, workspace_root=tmp_path / "work")
+    response = controller.explore(
+        controller.initial_state(),
+        _source(tmp_path / "source.jpg"),
+        "A paper kingdom",
+        "graphic_design",
+        "balanced",
+        preset,
+        4,
+        "scout",
+        "",
+        False,
+        50,
+        12.0,
+        ("structure",),
+    )
+
+    call = studios[preset].explore_calls[0]
+    assert call["recipe"].steps == 4
+    assert call["recipe"].guidance_scale == 1.0
+    assert call["overrides"]["steps"] == 4
+    assert call["overrides"]["guidance"] == 1.0
+    record = controller.registry.get(
+        str(response.state["run_id"]),
+        str(response.state["session_id"]),
+    )
+    assert record.request["steps"] == 4
+    assert record.request["guidance"] == 1.0
+
+
 def test_korean_explore_and_refine_preserve_original_and_model_prompts(
     tmp_path: Path,
 ) -> None:
@@ -1010,7 +1058,7 @@ def test_default_prompt_translator_is_lazy_and_cache_only(tmp_path: Path) -> Non
         workspace_root=tmp_path / "work",
     )
 
-    assert isinstance(controller.prompt_translator, MarianKoreanEnglishTranslator)
+    assert isinstance(controller.prompt_translator, M2M100KoreanEnglishTranslator)
     assert controller.prompt_translator.metadata.local_files_only is True
 
 

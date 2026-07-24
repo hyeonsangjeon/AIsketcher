@@ -28,8 +28,11 @@ Guided Sample is read-only and hash verified. It refuses to open if its
 manifest is absent or if a referenced image no longer matches the recorded
 SHA-256 value.
 
-- In a checkout, restore the complete `docs/assets/pocket-kingdom/` bundle from
-  the same revision instead of replacing individual files.
+- In a checkout, restore the complete
+  `src/aisketcher/studio_app/assets/pocket-kingdom/` bundle from the same
+  revision instead of replacing individual files. The similarly named
+  `docs/assets/pocket-kingdom/` directory is a documentation example, not the
+  packaged Guided Sample.
 - In an installed package, reinstall the same AIsketcher version.
 - Do not point the fixture at private source artwork or an arbitrary generation
   result.
@@ -64,8 +67,10 @@ python -m pip install "aisketcher[local]==0.3.0"
 ```
 
 Do not copy a partial Hugging Face cache into AIsketcher's managed directory.
-The preset manager requires its own marker plus every pinned SafeTensors
-component and rejects unsafe checkpoint suffixes.
+The preset manager requires its own marker plus every exact runtime file in the
+reviewed allowlist — weights, configuration, scheduler, index, and tokenizer
+files — at its recorded size and SHA-256. It also rejects unsafe checkpoint
+suffixes.
 
 FLUX.2 Klein Edit is the recommended/default preset for new live studies.
 `sdxl-canny-lite@1` and `sdxl-canny@1` are Legacy choices for existing
@@ -74,21 +79,27 @@ continues to identify its recorded SDXL recipe.
 
 ## A model download was stopped or failed
 
-Image-model preparation checks cancellation at curated selected-file
-boundaries. A large file that is already transferring may need to reach that
-boundary before the job reports Stopped.
+Image-model preparation checks cancellation at streamed SHA-256 chunks and
+curated selected-file boundaries. A provider transfer already in progress may
+need to reach the next boundary before the job reports Stopped.
 
-- A complete pinned image-model component with its valid AIsketcher marker
-  remains cached.
-- An incomplete image-model destination without a valid marker is removed.
+- A stopped read-only integrity check leaves the existing cache for retry, but
+  it is not trusted until the next full verification succeeds.
+- A failed fresh download removes only its incomplete managed destination.
 - Other installed models are not deleted.
-- Select the model again and confirm the rebuilt plan; the retry skips valid marked
-  components and downloads only missing files.
+- Select the model again and confirm the rebuilt plan. A new Studio process may
+  label existing files **Not yet verified · download if absent** and show the
+  conservative maximum transfer. On the validated T4, verifying the 16.2 GB
+  FLUX cache can take up to about one minute without downloading it.
+- A forged/legacy marker, wrong size or wrong SHA-256 never authorizes a model
+  load; a valid legacy cache is verified and upgraded automatically.
 
-The Korean helper uses a pinned Transformers cache rather than those
-AIsketcher image-model markers. Stop is checked between tokenizer and model
-load boundaries; a retry may reuse files already cached for the same immutable
-revision, but does not use the marker-and-cleanup contract above.
+The Korean helper uses a pinned Transformers snapshot rather than those
+AIsketcher image-model markers. Its seven exact runtime files are checked at
+file boundaries and during streamed SHA-256 verification, so Stop takes effect
+at the next safe boundary. A retry may reuse verified files cached for the same
+immutable revision, but does not use the image-model marker-and-cleanup
+contract above.
 
 Refreshing the browser is not a reliable cancellation mechanism. Use
 **Stop** so the active session token reaches the installer or generation
@@ -120,8 +131,12 @@ pinned local Korean-to-English adapter is unavailable, Studio stops before
 loading the image model or using the GPU and preserves the original text.
 
 Install the `translate` extra (or the broader `local` extra), then use the model
-preparation layer. It shows the pinned helper revision, roughly 315 MB transfer,
-cache reuse, and license alongside the selected image model.
+preparation layer. It shows the pinned `facebook/m2m100_418M` helper revision,
+roughly 1.9 GB transfer when uncached, cache reuse, and its MIT license
+alongside the selected image model's license. Recognized visual-design terms
+are protected with a deterministic glossary before Korean→English translation;
+the Korean original, prepared English, helper ID, and immutable revision remain
+separate provenance fields.
 **Review & prepare model** explicitly confirms both preparations; leaving setup
 before pressing it performs no download. As an alternative, enter a reviewed
 English prompt. Do not work around the message by placing credentials or an
