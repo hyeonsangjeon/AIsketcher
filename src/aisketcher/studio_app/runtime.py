@@ -1568,8 +1568,7 @@ class AppController:
                 with suppress(Exception):
                     close()
         with suppress(Exception):
-            import torch
-
+            torch = importlib.import_module("torch")
             cuda = getattr(torch, "cuda", None)
             if cuda is not None and callable(getattr(cuda, "empty_cache", None)):
                 cuda.empty_cache()

@@ -142,11 +142,12 @@ def test_canonical_sample_raw_html_targets_resolve_from_built_page() -> None:
 
 def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
     image_module = pytest.importorskip("PIL.Image")
+    capture_commit = "a5a3bd84c313bad904e8bb6ba24f15874ae71ef3"
     contracts = (
         {
             "asset": "aisketcher-studio-heritage-fixed-seed-en.jpg",
             "language": "en",
-            "dimensions": [1920, 1649],
+            "dimensions": [1920, 1200],
             "documents": (
                 ROOT / "README.md",
                 DOCS / "index.md",
@@ -157,7 +158,7 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
         {
             "asset": "aisketcher-studio-guided-sample-ko.jpg",
             "language": "ko",
-            "dimensions": [1920, 1564],
+            "dimensions": [1920, 1200],
             "documents": (DOCS / "ko/quickstart.md",),
             "excluded": (
                 ROOT / "README.md",
@@ -208,8 +209,8 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
         }
 
         source_state = provenance["capture_source_state"]
-        assert re.fullmatch(r"[0-9a-f]{40}", source_state["base_commit"])
-        assert source_state["worktree_dirty"] is True
+        assert source_state["base_commit"] == capture_commit
+        assert source_state["worktree_dirty"] is False
         assert source_state["status"] in {
             "pending-final-release-wheel-recapture",
             "verified",
@@ -249,6 +250,29 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
             / "assets/aisketcher-studio-heritage-fixed-seed-en.provenance.json"
         ).read_text(encoding="utf-8")
     )
+    korean_provenance = json.loads(
+        (
+            DOCS
+            / "assets/aisketcher-studio-guided-sample-ko.provenance.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert english_provenance["capture_source_state"] == (
+        korean_provenance["capture_source_state"]
+    )
+    assert english_provenance["capture_artifact"] == (
+        korean_provenance["capture_artifact"]
+    )
+    for key in (
+        "fixture",
+        "fixture_manifests",
+        "fixture_provenance",
+        "fixture_provenance_sha256",
+        "selected_candidate",
+        "selected_seed",
+        "recipe_sha256",
+        "preset",
+    ):
+        assert english_provenance[key] == korean_provenance[key]
     assert english_provenance["selected_seed"] == 6764547109648557242
     fixture_provenance = DOCS / "assets" / english_provenance["fixture_provenance"]
     assert hashlib.sha256(fixture_provenance.read_bytes()).hexdigest() == (

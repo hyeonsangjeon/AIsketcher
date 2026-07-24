@@ -1,22 +1,22 @@
 {
   "schema": "aisketcher.ui-screenshot-provenance/v1",
   "asset": "aisketcher-studio-heritage-fixed-seed-en.jpg",
-  "asset_sha256": "a64fc2e76df2fa8de97db8864e99f8be4b882c9b1d8b35e38f4b144938c4caed",
-  "asset_bytes": 371440,
-  "dimensions": [1920, 1649],
+  "asset_sha256": "15ad68de1496d1e46722e4dca04a7de607692055b75c0a39fbe35391309d6fb2",
+  "asset_bytes": 383695,
+  "dimensions": [1920, 1200],
   "captured_at": "2026-07-24",
   "capture_source_state": {
-    "base_commit": "611a0c777b21c443bc5ff96d308139cfadab2230",
-    "worktree_dirty": true,
+    "base_commit": "a5a3bd84c313bad904e8bb6ba24f15874ae71ef3",
+    "worktree_dirty": false,
     "status": "verified",
     "digest_kind": "installed-wheel-sha256",
-    "digest_sha256": "87442b350b18b4039297713a74b0661f774c65a4add495a6a235cdd8eda20253",
-    "note": "Captured from an isolated Python 3.12 installation of the exact final wheel in offline Guided Sample mode."
+    "digest_sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
+    "note": "Captured from an isolated Python 3.12 installation of the exact clean checkpoint wheel in offline Guided Sample mode."
   },
   "capture_artifact": {
     "filename": "aisketcher-0.3.0-py3-none-any.whl",
     "version": "0.3.0",
-    "sha256": "87442b350b18b4039297713a74b0661f774c65a4add495a6a235cdd8eda20253",
+    "sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
     "install_extra": "demo",
     "network_mode": "offline-guided-sample"
   },
