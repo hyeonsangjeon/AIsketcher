@@ -3,6 +3,59 @@
 This page tracks user-visible package changes. PyPI is the source of truth for
 whether a listed version is publicly available.
 
+## 0.3.0
+
+Version 0.3.0 modernizes the default local model path and makes Studio’s
+download, refinement, cancellation, and recovery boundaries explicit.
+
+### Added
+
+- a T4-validated FLUX.2 Klein Edit backend and curated **Auto** route for new
+  sketch-to-design, photo-led, and instruction-edit studies;
+- an explained model choice in Simple, including cache state, pinned revisions,
+  expected transfer, device guidance, and upstream license notices;
+- an explicit, pinned local Korean→English helper that preserves the Korean
+  original and records the prepared model prompt and translator revision,
+  without Transformers fetching an unpinned background conversion PR;
+- cooperative Stop behavior for generation and model/helper preparation,
+  same-session job reconnection, and a recovery layer for an ended temporary
+  Studio server;
+- a refinement instruction composer and a model-preparation layer for attempts
+  to refine the read-only Guided Sample.
+
+### Changed
+
+- `flux2-klein-edit@1` is the recommended/default live preset; SDXL Canny Lite
+  and Quality remain versioned Legacy choices for manifest replay and
+  intentional edge-conditioned work;
+- the four Simple direction cards are larger and avoid an inner gallery
+  scrollbar, while progress distinguishes elapsed time from an estimate;
+- model preparation requires an explicit confirmation before downloading the
+  selected image model or the Korean helper. Cancelling the layer performs no
+  network access, and a retry reuses complete pinned cache entries;
+- packaged Studio resolves the Korean helper below the same configured
+  AIsketcher cache root as image models, so cache-only reuse does not depend on
+  an unrelated global Hugging Face cache;
+- FLUX.2 variation levels are applied through explicit deterministic edit
+  instructions and recorded as an approximation, while model downloads observe
+  Stop between curated file groups;
+- release and deployment actions are pinned to reviewed full commit SHAs;
+- current install examples use the lowercase `aisketcher` identifier and pin
+  version 0.3.0;
+- the README embedded in each release artifact remains the PyPI project
+  description. Publishing the matching GitHub Release publishes that immutable
+  description and package through Trusted Publishing.
+
+### Removed
+
+- the deprecated uppercase `AIsketcher.img2img` facade;
+- the deprecated `aisketcher.modelPipe` compatibility module and uppercase
+  top-level module packaging.
+
+The historical Pocket Kingdom and heritage manifests keep their recorded SDXL
+recipes, seeds, hashes, and AIsketcher 0.2 runtime provenance. See the detailed
+[0.3.0 release notes](releases/0.3.0.md).
+
 ## 0.2.1
 
 Version 0.2.1 makes the modern v0.2 package the default public PyPI experience

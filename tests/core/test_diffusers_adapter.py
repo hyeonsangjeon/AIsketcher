@@ -8,7 +8,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from aisketcher import DiffusersBackend, GenerationError, Intent, SeedPlan, Studio
-from aisketcher.backends import _DiffusersRuntime
+from aisketcher.backends import DiffusersGenerationCancelled, _DiffusersRuntime
 
 
 class FakeGenerator:
@@ -159,6 +159,21 @@ class FakePipeline:
         seed = kwargs["generator"].seed
         size = (kwargs["width"], kwargs["height"])
         return SimpleNamespace(images=[Image.new("RGB", size, (seed % 255, 20, 30))])
+
+
+class InterruptiblePipeline(FakePipeline):
+    def __init__(self) -> None:
+        super().__init__()
+        self.before_step: Any = None
+        self._interrupt = False
+
+    def __call__(self, **kwargs: Any) -> SimpleNamespace:
+        self.call_kwargs.append(kwargs)
+        if callable(self.before_step):
+            self.before_step()
+        kwargs["callback_on_step_end"](self, 0, 999, {})
+        size = (kwargs["width"], kwargs["height"])
+        return SimpleNamespace(images=[Image.new("RGB", size, (40, 50, 60))])
 
 
 class FakeVAE:
@@ -478,7 +493,7 @@ def test_cuda_and_cpu_keep_standard_pipeline_path(device: str, allow_cpu: bool, 
 
     assert pipeline.call_kwargs[0]["generator"].device == device
     assert "output_type" not in pipeline.call_kwargs[0]
-    assert "callback_on_step_end" not in pipeline.call_kwargs[0]
+    assert callable(pipeline.call_kwargs[0]["callback_on_step_end"])
     assert backend._pipeline is pipeline
     assert study[0].backend_metadata["mps_isolated"] is False
 
@@ -487,6 +502,35 @@ def test_cuda_and_cpu_keep_standard_pipeline_path(device: str, allow_cpu: bool, 
     assert isinstance(variation_call["image"], Image.Image)
     assert "output_type" not in variation_call
     assert variants[0].backend_metadata["mps_isolated"] is False
+
+
+def test_request_cancel_stops_an_active_diffusers_step_and_is_consumed() -> None:
+    pipeline = InterruptiblePipeline()
+    backend = DiffusersBackend(
+        device="cuda",
+        pipeline=pipeline,
+        variation_pipeline=FakePipeline(),
+    )
+    backend._runtime = runtime(FakeCUDATorch)
+    studio = Studio(backend)
+    prepared = studio.prepare(sketch(), max_side=96)
+    pipeline.before_step = backend.request_cancel
+
+    with pytest.raises(DiffusersGenerationCancelled, match="cancelled"):
+        studio.explore(
+            prepared,
+            intent=Intent("paper castle"),
+            outputs=1,
+        )
+
+    assert pipeline._interrupt is False
+    pipeline.before_step = None
+    recovered = studio.explore(
+        prepared,
+        intent=Intent("paper castle"),
+        outputs=1,
+    )
+    assert len(recovered) == 1
 
 
 def test_mps_invalid_latents_reload_pipeline_and_retry_same_seed_once() -> None:

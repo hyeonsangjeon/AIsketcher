@@ -27,14 +27,15 @@ jobs:
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
+      actions: read # Required only to verify CI on the immutable event SHA.
       contents: read
     outputs:
       version: ${{ steps.release.outputs.version }}
+      wheel_filename: ${{ steps.distributions.outputs.wheel_filename }}
+      wheel_sha256: ${{ steps.distributions.outputs.wheel_sha256 }}
+      sdist_filename: ${{ steps.distributions.outputs.sdist_filename }}
+      sdist_sha256: ${{ steps.distributions.outputs.sdist_sha256 }}
     steps:
-      - name: Check out selected revision
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
       - name: Resolve and verify release version
         id: release
         env:
@@ -70,18 +71,139 @@ jobs:
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Verify published release and default-branch ancestry
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected_tag="v${EXPECTED_VERSION}"
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"
+          )"
+          release_tag="$(jq -r '.tag_name' <<< "${release_json}")"
+          release_draft="$(jq -r '.draft' <<< "${release_json}")"
+          release_prerelease="$(jq -r '.prerelease' <<< "${release_json}")"
+          if [[
+            "${release_tag}" != "${expected_tag}" ||
+            "${release_draft}" != "false" ||
+            "${release_prerelease}" != "false"
+          ]]; then
+            echo "A published, non-prerelease GitHub Release for ${expected_tag} is required." >&2
+            exit 1
+          fi
+
+          default_branch="$(
+            gh api "repos/${GITHUB_REPOSITORY}" --jq '.default_branch'
+          )"
+          default_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${default_branch}" --jq '.sha'
+          )"
+          tag_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${expected_tag}" --jq '.sha'
+          )"
+          if [[ "${tag_sha}" != "${EVENT_SHA}" ]]; then
+            echo "Release tag ${expected_tag} moved away from event SHA ${EVENT_SHA}." >&2
+            exit 1
+          fi
+          comparison_json="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/compare/${expected_tag}...${default_branch}"
+          )"
+          comparison_status="$(jq -r '.status' <<< "${comparison_json}")"
+          merge_base_sha="$(jq -r '.merge_base_commit.sha' <<< "${comparison_json}")"
+          if [[
+            "${merge_base_sha}" != "${tag_sha}" ||
+            (
+              "${comparison_status}" != "ahead" &&
+              "${comparison_status}" != "identical"
+            )
+          ]]; then
+            printf '%s\n' \
+              "Release tag ${expected_tag} (${tag_sha}) is not in " \
+              "${default_branch} history at ${default_sha}." >&2
+            exit 1
+          fi
+      - name: Require successful CI for the exact release commit
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in {1..90}; do
+            runs_json="$(
+              gh api \
+                --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+                -f "head_sha=${EVENT_SHA}" \
+                -f "per_page=100"
+            )"
+            successful="$(
+              jq \
+                --arg repository "${GITHUB_REPOSITORY}" \
+                --arg sha "${EVENT_SHA}" \
+                '[
+                  .workflow_runs[]
+                  | select(
+                      .head_sha == $sha
+                      and .conclusion == "success"
+                      and (.event == "push" or .event == "workflow_dispatch")
+                      and .head_repository.full_name == $repository
+                    )
+                ] | length' \
+                <<< "${runs_json}"
+            )"
+            if [[ "${successful}" -gt 0 ]]; then
+              echo "Verified successful CI for immutable release commit ${EVENT_SHA}."
+              break
+            fi
+
+            pending="$(
+              jq \
+                --arg repository "${GITHUB_REPOSITORY}" \
+                --arg sha "${EVENT_SHA}" \
+                '[
+                  .workflow_runs[]
+                  | select(
+                      .head_sha == $sha
+                      and .status != "completed"
+                      and (.event == "push" or .event == "workflow_dispatch")
+                      and .head_repository.full_name == $repository
+                    )
+                ] | length' \
+                <<< "${runs_json}"
+            )"
+            if [[ "${attempt}" -eq 90 || "${pending}" -eq 0 ]]; then
+              echo "Exact release commit ${EVENT_SHA} has no successful eligible CI run." >&2
+              exit 1
+            fi
+            echo "Waiting for exact-SHA CI (${attempt}/90)."
+            sleep 10
+          done
+      - name: Check out selected revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: pyproject.toml
       - name: Install build tooling
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev,demo]"
       - name: Run release tests
         run: python -m pytest
+      - name: Pin the release build timestamp
+        run: |
+          source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          if [[ ! "${source_date_epoch}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Could not derive SOURCE_DATE_EPOCH from ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+          echo "SOURCE_DATE_EPOCH=${source_date_epoch}" >> "${GITHUB_ENV}"
+          echo "Building ${GITHUB_SHA} with SOURCE_DATE_EPOCH=${source_date_epoch}."
       - name: Build wheel and source archive
-        run: python -m build
+        run: |
+          python -m build --sdist
+          python -m build --wheel
       - name: Check package metadata
         run: python -m twine check dist/*
       - name: Verify distribution names and versions
@@ -138,6 +260,32 @@ jobs:
           PY
       - name: Scan distributable contents
         run: python tests/docs/scan_distribution.py --repository . dist/*
+      - name: Record the canonical Actions artifact digests
+        id: distributions
+        run: |
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          if [[ ${#wheels[@]} -ne 1 || ! -f "${wheels[0]}" ]]; then
+            echo "Expected exactly one wheel." >&2
+            exit 1
+          fi
+          if [[ ${#sdists[@]} -ne 1 || ! -f "${sdists[0]}" ]]; then
+            echo "Expected exactly one source archive." >&2
+            exit 1
+          fi
+          wheel_filename="$(basename "${wheels[0]}")"
+          sdist_filename="$(basename "${sdists[0]}")"
+          wheel_sha256="$(sha256sum "${wheels[0]}" | awk '{print $1}')"
+          sdist_sha256="$(sha256sum "${sdists[0]}" | awk '{print $1}')"
+          {
+            echo "wheel_filename=${wheel_filename}"
+            echo "wheel_sha256=${wheel_sha256}"
+            echo "sdist_filename=${sdist_filename}"
+            echo "sdist_sha256=${sdist_sha256}"
+          } >> "${GITHUB_OUTPUT}"
+          printf '%s  %s\n%s  %s\n' \
+            "${wheel_sha256}" "${wheel_filename}" \
+            "${sdist_sha256}" "${sdist_filename}"
       - name: Smoke-test the exact wheel before publication
         run: |
           wheel_path="$(python -c 'import glob, os; print(os.path.abspath(glob.glob("dist/*.whl")[0]))')"
@@ -147,7 +295,7 @@ jobs:
           /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
           /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
       - name: Upload verified release distributions
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: python-distributions-${{ steps.release.outputs.version }}
           path: dist/*
@@ -156,21 +304,86 @@ jobs:
 
   attach-release-assets:
     name: Attach verified distributions to GitHub Release
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs: [build, publish]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Required only to attach the verified distributions.
     steps:
-      - name: Download verified release distributions
-        uses: actions/download-artifact@v8
+      - name: Verify matching published GitHub Release
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected_tag="v${EXPECTED_VERSION}"
+          if [[ "${GITHUB_REF}" != "refs/tags/${expected_tag}" ]]; then
+            echo "Expected refs/tags/${expected_tag}; got ${GITHUB_REF}." >&2
+            exit 1
+          fi
+
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"
+          )"
+          release_tag="$(jq -r '.tag_name' <<< "${release_json}")"
+          release_draft="$(jq -r '.draft' <<< "${release_json}")"
+          release_prerelease="$(jq -r '.prerelease' <<< "${release_json}")"
+          if [[
+            "${release_tag}" != "${expected_tag}" ||
+            "${release_draft}" != "false" ||
+            "${release_prerelease}" != "false"
+          ]]; then
+            echo "A published, non-prerelease GitHub Release for ${expected_tag} is required." >&2
+            exit 1
+          fi
+          tag_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${expected_tag}" --jq '.sha'
+          )"
+          if [[ "${tag_sha}" != "${EVENT_SHA}" ]]; then
+            echo "Release tag ${expected_tag} moved away from event SHA ${EVENT_SHA}." >&2
+            exit 1
+          fi
+      - name: Download the canonical distributions verified from PyPI
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: python-distributions-${{ needs.build.outputs.version }}
+          name: published-python-distributions-${{ needs.build.outputs.version }}
           path: dist
-      - name: Attach distributions to the published release
+      - name: Attach missing distributions without replacing release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}"
+        run: |
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          )"
+          existing_names="$(jq -r '.assets[].name' <<< "${release_json}")"
+          missing=()
+
+          for distribution in dist/*; do
+            name="$(basename "${distribution}")"
+            if grep -Fqx -- "${name}" <<< "${existing_names}"; then
+              comparison_dir="$(mktemp -d)"
+              gh release download "${GITHUB_REF_NAME}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --pattern "${name}" \
+                --dir "${comparison_dir}"
+              if ! cmp -s "${distribution}" "${comparison_dir}/${name}"; then
+                echo "Release asset ${name} already exists with different bytes." >&2
+                rm -rf "${comparison_dir}"
+                exit 1
+              fi
+              rm -rf "${comparison_dir}"
+              echo "Keeping identical existing release asset ${name}."
+            else
+              missing+=("${distribution}")
+            fi
+          done
+
+          if (( ${#missing[@]} )); then
+            gh release upload "${GITHUB_REF_NAME}" "${missing[@]}" \
+              --repo "${GITHUB_REPOSITORY}"
+          else
+            echo "All verified distributions are already attached."
+          fi
 
   publish:
     name: Publish ${{ needs.build.outputs.version }} to PyPI
@@ -178,12 +391,411 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write
+      contents: read
+      id-token: write # Required only for PyPI Trusted Publishing.
+    outputs:
+      upload_needed: ${{ steps.pypi_state.outputs.upload_needed }}
     steps:
+      - name: Check out release verification tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Download verified release distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
-      - name: Publish with PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@v1.14.1
+      - name: Verify the approved Actions artifact identity
+        env:
+          EXPECTED_SDIST: ${{ needs.build.outputs.sdist_filename }}
+          EXPECTED_SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
+          EXPECTED_WHEEL: ${{ needs.build.outputs.wheel_filename }}
+          EXPECTED_WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+        run: |
+          if [[
+            ! -f "dist/${EXPECTED_WHEEL}" ||
+            ! -f "dist/${EXPECTED_SDIST}" ||
+            "$(find dist -maxdepth 1 -type f | wc -l | tr -d ' ')" != "2"
+          ]]; then
+            echo "Downloaded Actions artifact has an unexpected distribution set." >&2
+            exit 1
+          fi
+          actual_wheel_sha256="$(
+            sha256sum "dist/${EXPECTED_WHEEL}" | awk '{print $1}'
+          )"
+          actual_sdist_sha256="$(
+            sha256sum "dist/${EXPECTED_SDIST}" | awk '{print $1}'
+          )"
+          if [[ "${actual_wheel_sha256}" != "${EXPECTED_WHEEL_SHA256}" ]]; then
+            echo "Downloaded wheel differs from the build job artifact." >&2
+            exit 1
+          fi
+          if [[ "${actual_sdist_sha256}" != "${EXPECTED_SDIST_SHA256}" ]]; then
+            echo "Downloaded source archive differs from the build job artifact." >&2
+            exit 1
+          fi
+      - name: Recheck release gate immediately before PyPI
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected_tag="v${EXPECTED_VERSION}"
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"
+          )"
+          release_tag="$(jq -r '.tag_name' <<< "${release_json}")"
+          release_draft="$(jq -r '.draft' <<< "${release_json}")"
+          release_prerelease="$(jq -r '.prerelease' <<< "${release_json}")"
+          if [[
+            "${release_tag}" != "${expected_tag}" ||
+            "${release_draft}" != "false" ||
+            "${release_prerelease}" != "false"
+          ]]; then
+            echo "The published, non-prerelease Release gate changed during the build." >&2
+            exit 1
+          fi
+
+          default_branch="$(
+            gh api "repos/${GITHUB_REPOSITORY}" --jq '.default_branch'
+          )"
+          tag_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${expected_tag}" --jq '.sha'
+          )"
+          if [[ "${tag_sha}" != "${EVENT_SHA}" ]]; then
+            echo "Release tag ${expected_tag} moved away from event SHA ${EVENT_SHA}." >&2
+            exit 1
+          fi
+          comparison_json="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/compare/${expected_tag}...${default_branch}"
+          )"
+          comparison_status="$(jq -r '.status' <<< "${comparison_json}")"
+          merge_base_sha="$(jq -r '.merge_base_commit.sha' <<< "${comparison_json}")"
+          if [[
+            "${merge_base_sha}" != "${tag_sha}" ||
+            (
+              "${comparison_status}" != "ahead" &&
+              "${comparison_status}" != "identical"
+            )
+          ]]; then
+            echo "Release tag ${expected_tag} left ${default_branch} history." >&2
+            exit 1
+          fi
+      - name: Plan a safe new publication or partial-upload recovery
+        id: pypi_state
+        env:
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          EXPECTED_WHEEL: ${{ needs.build.outputs.wheel_filename }}
+          EXPECTED_WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          def verified_url(raw: object, *, filename: str) -> str:
+              if not isinstance(raw, str):
+                  raise SystemExit(f"PyPI returned no file URL for {filename}.")
+              parsed = urllib.parse.urlparse(raw)
+              if (
+                  parsed.scheme != "https"
+                  or parsed.hostname != "files.pythonhosted.org"
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.port not in {None, 443}
+              ):
+                  raise SystemExit(f"Refusing unexpected PyPI file URL for {filename}.")
+              return raw
+
+          def verified_digest(item: dict[str, object], *, filename: str) -> str:
+              digests = item.get("digests")
+              digest = digests.get("sha256") if isinstance(digests, dict) else None
+              if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                  raise SystemExit(f"PyPI returned no valid SHA-256 for {filename}.")
+              return digest
+
+          def download_existing(
+              item: dict[str, object],
+              destination: Path,
+              *,
+              filename: str,
+          ) -> str:
+              url = verified_url(item.get("url"), filename=filename)
+              with urllib.request.urlopen(url, timeout=60) as response:
+                  verified_url(response.geturl(), filename=filename)
+                  destination.write_bytes(response.read())
+              actual = hashlib.sha256(destination.read_bytes()).hexdigest()
+              expected = verified_digest(item, filename=filename)
+              if actual != expected:
+                  raise SystemExit(
+                      f"Downloaded PyPI distribution {filename} failed its SHA-256 check."
+                  )
+              return actual
+
+          version = os.environ["EXPECTED_VERSION"]
+          expected_wheel = os.environ["EXPECTED_WHEEL"]
+          expected_wheel_sha256 = os.environ["EXPECTED_WHEEL_SHA256"]
+          endpoint = f"https://pypi.org/pypi/AIsketcher/{version}/json"
+          try:
+              with urllib.request.urlopen(endpoint, timeout=30) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              payload = {"urls": []}
+          if not isinstance(payload, dict) or not isinstance(payload.get("urls"), list):
+              raise SystemExit("PyPI returned invalid project metadata.")
+
+          local = tuple(sorted(path for path in Path("dist").iterdir() if path.is_file()))
+          if len(local) != 2:
+              raise SystemExit("Expected exactly one wheel and one source archive.")
+          local_by_name = {path.name: path for path in local}
+          published: dict[str, dict[str, object]] = {}
+          for item in payload["urls"]:
+              if (
+                  not isinstance(item, dict)
+                  or not isinstance(item.get("filename"), str)
+              ):
+                  raise SystemExit("PyPI returned incomplete distribution metadata.")
+              filename = item["filename"]
+              if filename in published:
+                  raise SystemExit(f"PyPI returned duplicate metadata for {filename}.")
+              published[filename] = item
+
+          local_names = set(local_by_name)
+          published_names = set(published)
+          if not published_names.issubset(local_names):
+              unexpected = sorted(published_names - local_names)
+              raise SystemExit(
+                  "PyPI already has this immutable version with a different distribution "
+                  f"set; unexpected={unexpected}."
+              )
+
+          preexisting_dir = Path("preexisting-dist")
+          preexisting_dir.mkdir()
+          for name in sorted(published_names):
+              local_path = local_by_name[name]
+              destination = preexisting_dir / name
+              downloaded_digest = download_existing(
+                  published[name],
+                  destination,
+                  filename=name,
+              )
+              if (
+                  name == expected_wheel
+                  and downloaded_digest != expected_wheel_sha256
+              ):
+                  raise SystemExit(
+                      "Pre-existing PyPI wheel bytes do not match the approved "
+                      "Actions wheel SHA-256."
+                  )
+              subprocess.run(
+                  [
+                      sys.executable,
+                      "tests/docs/verify_distribution_equivalence.py",
+                      str(local_path),
+                      str(destination),
+                  ],
+                  check=True,
+              )
+
+          missing_names = sorted(local_names - published_names)
+          upload_dir = Path("upload-dist")
+          upload_dir.mkdir()
+          for name in missing_names:
+              shutil.copy2(local_by_name[name], upload_dir / name)
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"upload_needed={'true' if missing_names else 'false'}\n")
+          if missing_names:
+              print(
+                  "Verified every pre-existing PyPI distribution and staged only "
+                  f"the missing files for upload: {missing_names}."
+              )
+          else:
+              print("PyPI already contains both content-equivalent distributions.")
+          PY
+      - name: Publish only missing distributions with PyPI Trusted Publishing
+        if: steps.pypi_state.outputs.upload_needed == 'true'
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+        with:
+          packages-dir: upload-dist/
+      - name: Verify and preserve the complete canonical PyPI distribution set
+        env:
+          EXPECTED_SDIST: ${{ needs.build.outputs.sdist_filename }}
+          EXPECTED_SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
+          EXPECTED_VERSION: ${{ needs.build.outputs.version }}
+          EXPECTED_WHEEL: ${{ needs.build.outputs.wheel_filename }}
+          EXPECTED_WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import sys
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          class RetryablePyPIState(RuntimeError):
+              pass
+
+          def verified_url(raw: object, *, filename: str) -> str:
+              if not isinstance(raw, str):
+                  raise RetryablePyPIState(f"PyPI returned no file URL for {filename}.")
+              parsed = urllib.parse.urlparse(raw)
+              if (
+                  parsed.scheme != "https"
+                  or parsed.hostname != "files.pythonhosted.org"
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.port not in {None, 443}
+              ):
+                  raise SystemExit(f"Refusing unexpected PyPI file URL for {filename}.")
+              return raw
+
+          def metadata_by_name(payload: object) -> dict[str, dict[str, object]]:
+              if not isinstance(payload, dict) or not isinstance(payload.get("urls"), list):
+                  raise RetryablePyPIState("PyPI returned invalid project metadata.")
+              result: dict[str, dict[str, object]] = {}
+              for item in payload["urls"]:
+                  if not isinstance(item, dict) or not isinstance(item.get("filename"), str):
+                      raise RetryablePyPIState(
+                          "PyPI returned incomplete distribution metadata."
+                      )
+                  filename = item["filename"]
+                  if filename in result:
+                      raise SystemExit(f"PyPI returned duplicate metadata for {filename}.")
+                  result[filename] = item
+              return result
+
+          version = os.environ["EXPECTED_VERSION"]
+          expected_wheel = os.environ["EXPECTED_WHEEL"]
+          expected = {
+              expected_wheel: os.environ["EXPECTED_WHEEL_SHA256"],
+              os.environ["EXPECTED_SDIST"]: os.environ["EXPECTED_SDIST_SHA256"],
+          }
+          local = {path.name: path for path in Path("dist").iterdir() if path.is_file()}
+          if set(local) != set(expected):
+              raise SystemExit("The approved local distribution set changed unexpectedly.")
+          uploaded_names = {
+              path.name for path in Path("upload-dist").iterdir() if path.is_file()
+          }
+          if not uploaded_names.issubset(expected):
+              raise SystemExit("The staged upload directory contains an unexpected file.")
+          endpoint = f"https://pypi.org/pypi/AIsketcher/{version}/json"
+
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(endpoint, timeout=30) as response:
+                      payload = json.load(response)
+                  published = metadata_by_name(payload)
+                  published_names = set(published)
+                  unexpected = sorted(published_names - set(expected))
+                  if unexpected:
+                      raise SystemExit(
+                          f"PyPI returned unexpected distributions: {unexpected}."
+                      )
+                  missing = sorted(set(expected) - published_names)
+                  if missing:
+                      raise RetryablePyPIState(
+                          f"PyPI has not exposed every expected distribution: {missing}."
+                      )
+
+                  canonical_dir = Path("canonical-dist")
+                  shutil.rmtree(canonical_dir, ignore_errors=True)
+                  canonical_dir.mkdir()
+                  for filename in sorted(expected):
+                      item = published[filename]
+                      digests = item.get("digests")
+                      recorded = (
+                          digests.get("sha256") if isinstance(digests, dict) else None
+                      )
+                      if (
+                          not isinstance(recorded, str)
+                          or re.fullmatch(r"[0-9a-f]{64}", recorded) is None
+                      ):
+                          raise RetryablePyPIState(
+                              f"PyPI returned no valid SHA-256 for {filename}."
+                          )
+                      requires_actions_exact = (
+                          filename == expected_wheel or filename in uploaded_names
+                      )
+                      if requires_actions_exact and recorded != expected[filename]:
+                          raise RetryablePyPIState(
+                              "PyPI metadata does not match the approved Actions "
+                              f"artifact for {filename}."
+                          )
+
+                      url = verified_url(item.get("url"), filename=filename)
+                      destination = canonical_dir / filename
+                      with urllib.request.urlopen(url, timeout=60) as response:
+                          verified_url(response.geturl(), filename=filename)
+                          destination.write_bytes(response.read())
+                      downloaded_digest = hashlib.sha256(
+                          destination.read_bytes()
+                      ).hexdigest()
+                      if downloaded_digest != recorded:
+                          raise RetryablePyPIState(
+                              f"Downloaded PyPI distribution {filename} failed SHA-256."
+                          )
+                      if (
+                          requires_actions_exact
+                          and downloaded_digest != expected[filename]
+                      ):
+                          raise RetryablePyPIState(
+                              f"PyPI {filename} bytes do not match the approved "
+                              "Actions artifact."
+                          )
+                      subprocess.run(
+                          [
+                              sys.executable,
+                              "tests/docs/verify_distribution_equivalence.py",
+                              str(local[filename]),
+                              str(destination),
+                          ],
+                          check=True,
+                      )
+                      print(
+                          f"verified canonical PyPI distribution {filename}: "
+                          f"{downloaded_digest}"
+                      )
+                  break
+              except (
+                  json.JSONDecodeError,
+                  OSError,
+                  RetryablePyPIState,
+                  subprocess.CalledProcessError,
+              ) as exc:
+                  if attempt == 11:
+                      raise SystemExit(
+                          f"PyPI did not converge to the verified distribution set: {exc}"
+                      ) from exc
+                  shutil.rmtree("canonical-dist", ignore_errors=True)
+                  time.sleep(5)
+          PY
+      - name: Upload the complete canonical PyPI distributions for Release recovery
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: published-python-distributions-${{ needs.build.outputs.version }}
+          path: canonical-dist/*
+          if-no-files-found: error
+          retention-days: 7

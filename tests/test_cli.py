@@ -112,3 +112,79 @@ def test_studio_reports_missing_demo_extra_without_a_traceback(
     captured = capsys.readouterr()
     assert "AIsketcher with the 'demo' extra" in captured.err
     assert "Traceback" not in captured.err
+
+
+@pytest.mark.parametrize(
+    ("preset", "simple_model"),
+    (
+        ("flux2-klein-edit@1", "auto"),
+        ("sdxl-canny-lite@1", "sdxl-canny-lite@1"),
+    ),
+)
+def test_studio_uses_the_managed_cache_for_the_korean_translator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    preset: str,
+    simple_model: str,
+) -> None:
+    import aisketcher as package
+    import aisketcher.studio_app as studio_app
+    from aisketcher.cli import _launch_studio
+    from aisketcher.prompt_normalization import M2M100KoreanEnglishTranslator
+
+    captured: dict[str, object] = {}
+    cache = tmp_path / "models"
+
+    class FakeManager:
+        def __init__(
+            self, cache_dir: str | Path | None, *, allow_downloads: bool
+        ) -> None:
+            assert cache_dir == cache
+            assert allow_downloads is True
+            self.cache_dir = Path(cache_dir)
+
+    class FakeStudio:
+        pass
+
+    class FakeController:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def close(self) -> None:
+            captured["closed"] = True
+
+    class FakeDemo:
+        _studio_launch_kwargs = {"server_name": "127.0.0.1"}
+
+        def launch(self, **kwargs: object) -> None:
+            captured["launch"] = kwargs
+
+    monkeypatch.setattr(package, "PresetManager", FakeManager)
+    monkeypatch.setattr(package, "Studio", FakeStudio)
+
+    def fake_build_app(controller: object, **kwargs: object) -> FakeDemo:
+        captured["build_controller"] = controller
+        captured["build_kwargs"] = kwargs
+        return FakeDemo()
+
+    monkeypatch.setattr(studio_app, "AppController", FakeController)
+    monkeypatch.setattr(studio_app, "build_app", fake_build_app)
+
+    config = AIsketcherConfig(
+        cache_dir=str(cache),
+        preset=preset,
+    )
+    assert _launch_studio(config, port=7862) == 0
+
+    translator = captured["prompt_translator"]
+    assert isinstance(translator, M2M100KoreanEnglishTranslator)
+    assert translator.cache_dir == str(cache / "translation")
+    build_kwargs = captured["build_kwargs"]
+    assert isinstance(build_kwargs, dict)
+    assert build_kwargs["default_preset"] == preset
+    assert build_kwargs["default_simple_model"] == simple_model
+    assert captured["launch"] == {
+        "server_name": "127.0.0.1",
+        "server_port": 7862,
+    }
+    assert captured["closed"] is True

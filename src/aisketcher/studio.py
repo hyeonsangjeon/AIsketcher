@@ -15,6 +15,11 @@ from .backends import Backend, DiffusersBackend
 from .controls import image_sha256, rescore_candidates
 from .controls import prepare as prepare_sketch
 from .errors import ReplayError, UnsupportedCapabilityError, ValidationError
+from .flux2_backend import (
+    Flux2KleinBackend,
+    Flux2KleinModelConfig,
+    Flux2KleinSettings,
+)
 from .manifest import (
     canonical_sha256,
     load_manifest,
@@ -67,29 +72,68 @@ class Studio:
             raise ValidationError("backend must implement the AIsketcher Backend protocol")
         self.backend = backend
         self.preset = get_preset(preset).name
-        self.preset_manager = preset_manager or getattr(
-            backend, "preset_manager", PresetManager()
+        backend_manager = getattr(backend, "preset_manager", None)
+        self.preset_manager: PresetManager = (
+            preset_manager
+            if preset_manager is not None
+            else (
+                backend_manager
+                if isinstance(backend_manager, PresetManager)
+                else PresetManager()
+            )
         )
 
     @classmethod
     def from_preset(
         cls,
-        preset: str = "sdxl-canny-lite@1",
+        preset: str = "flux2-klein-edit@1",
         *,
         device: str = "auto",
         backend: Backend | None = None,
         preset_manager: PresetManager | None = None,
         local_files_only: bool = True,
     ) -> Studio:
+        selected_preset = get_preset(preset)
         manager = preset_manager or PresetManager(
             allow_downloads=not local_files_only
         )
-        selected_backend = backend or DiffusersBackend(
-            device=device,
+        selected_backend = backend
+        if selected_backend is None:
+            if selected_preset.name == "flux2-klein-edit@1":
+                base_model = next(
+                    model for model in selected_preset.models if model.role == "base-edit"
+                )
+                decoder_model = next(
+                    model for model in selected_preset.models if model.role == "decoder"
+                )
+                selected_backend = Flux2KleinBackend(
+                    model=Flux2KleinModelConfig(
+                        repo_id=base_model.repo_id,
+                        revision=base_model.revision,
+                        cache_dir=manager.cache_dir,
+                        base_path=manager.model_destination(base_model),
+                        decoder_model_id=decoder_model.repo_id,
+                        decoder_revision=decoder_model.revision,
+                        decoder_path=manager.model_destination(decoder_model),
+                    ),
+                    settings=Flux2KleinSettings(
+                        num_inference_steps=selected_preset.steps,
+                        guidance_scale=selected_preset.guidance_scale,
+                    ),
+                    device=device,
+                    local_files_only=local_files_only,
+                )
+            else:
+                selected_backend = DiffusersBackend(
+                    device=device,
+                    preset_manager=manager,
+                    local_files_only=local_files_only,
+                )
+        return cls(
+            selected_backend,
+            preset=selected_preset.name,
             preset_manager=manager,
-            local_files_only=local_files_only,
         )
-        return cls(selected_backend, preset=preset, preset_manager=manager)
 
     def prepare(
         self,
@@ -176,6 +220,13 @@ class Studio:
         denoise_strength: float | None = None,
     ) -> Study:
         self._validate_outputs(outputs)
+        if isinstance(self.backend, Flux2KleinBackend):
+            # FLUX receives explicit managed-directory paths rather than asking
+            # Diffusers to resolve a Hub id.  Revalidate those directories at
+            # the last boundary before generation so an unmarked, incomplete,
+            # or newly tampered cache can never bypass PresetManager's pinned
+            # allowlist contract.
+            self.preset_manager.require_installed(self.preset)
         seeds = seed_plan.resolve(outputs)
         request = GenerationRequest(
             prepared=prepared,
@@ -382,8 +433,10 @@ class Studio:
             recorded_recipe = replace(recorded_recipe, models=current_preset.models)
 
         capabilities = self.backend.capabilities
-        if "canny" not in capabilities.controls:
-            raise UnsupportedCapabilityError("Replay requires Canny control support")
+        if current_preset.required_control not in capabilities.controls:
+            raise UnsupportedCapabilityError(
+                f"Replay requires {current_preset.required_control} control support"
+            )
         if recorded_recipe.scheduler not in capabilities.schedulers:
             message = f"scheduler {recorded_recipe.scheduler!r} is unsupported"
             if replay_mode is ReplayMode.STRICT or not capabilities.schedulers:

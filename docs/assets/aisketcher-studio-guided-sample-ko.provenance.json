@@ -1,18 +1,49 @@
 {
   "schema": "aisketcher.ui-screenshot-provenance/v1",
   "asset": "aisketcher-studio-guided-sample-ko.jpg",
-  "asset_sha256": "503600192fa509bb3e78badfafc4a370f204f8415e74cf7f069ff24edd256e68",
-  "asset_bytes": 184337,
-  "dimensions": [1280, 946],
-  "captured_at": "2026-07-16",
-  "captured_from_commit": "cba38982b8f12765ca4736648c46dd8a0a3c0800",
+  "asset_sha256": "9a57a7b503c055fed6020a6fa10d5b8be8d2f9ca98070a652768d94d2ced9bea",
+  "asset_bytes": 362086,
+  "dimensions": [1920, 1200],
+  "captured_at": "2026-07-24",
+  "capture_source_state": {
+    "base_commit": "a5a3bd84c313bad904e8bb6ba24f15874ae71ef3",
+    "worktree_dirty": false,
+    "status": "verified",
+    "digest_kind": "installed-wheel-sha256",
+    "digest_sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
+    "note": "Captured from an isolated Python 3.12 installation of the exact clean checkpoint wheel in offline Guided Sample mode."
+  },
+  "capture_artifact": {
+    "filename": "aisketcher-0.3.0-py3-none-any.whl",
+    "version": "0.3.0",
+    "sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
+    "install_extra": "demo",
+    "network_mode": "offline-guided-sample"
+  },
   "surface": "packaged local Gradio Studio",
   "view": "Simple",
   "language": "ko",
-  "fixture": "pocket-kingdom",
-  "fixture_manifest": "pocket-kingdom/manifest.json",
-  "fixture_manifest_sha256": "97f61d5033d4593d2f49e54108216d0a56372ff55792f0d7c130ca1a04358634",
+  "fixture": "heritage-studio-hero-hpo-en",
+  "fixture_manifests": {
+    "documentation_source": {
+      "path": "docs/assets/heritage-studio-hero-hpo-en/manifest.json",
+      "sha256": "a940196ca8625ae57aaeb3d02e7564eecba6456116b7bbf691a97ceee9ae02be"
+    },
+    "packaged_runtime": {
+      "path": "src/aisketcher/studio_app/assets/pocket-kingdom/manifest.json",
+      "sha256": "ac937fc785fd53f6c55e3fb8aca15c150efc44feca381e2d2f0d5dc4ac4fd0b5"
+    }
+  },
+  "fixture_provenance": "heritage-studio-hero-hpo-en/provenance.json",
+  "fixture_provenance_sha256": "737adde54b208b0d454133330605c969736b4ef04a36f727fc4747a02c190b9d",
+  "selected_candidate": "candidate-ffd8b272e6ec",
+  "selected_seed": 6764547109648557242,
+  "recipe_sha256": "57e36a609469561681bd3861d0e868cf18f8da4c872a2cb3ab26cfec1331cdbb",
+  "preset": "sdxl-canny-lite@1",
+  "fixture_generated_with_model": true,
+  "model_weights_bundled": false,
   "model_downloaded_for_capture": false,
+  "image_uploaded_for_capture": false,
   "private_user_data_present": false,
   "license_notice": "../../ARTWORK_LICENSE.md"
 }

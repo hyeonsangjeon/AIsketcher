@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .backends import Backend, DiffusersBackend, FakeBackend
+from .backends import (
+    Backend,
+    DiffusersBackend,
+    DiffusersGenerationCancelled,
+    FakeBackend,
+)
 from .config import (
     CONFIG_SCHEMA_VERSION,
     AIsketcherConfig,
@@ -24,6 +29,28 @@ from .errors import (
     UnsafeModelError,
     UnsupportedCapabilityError,
     ValidationError,
+)
+from .flux2_backend import (
+    Flux2GenerationCancelled,
+    Flux2KleinBackend,
+    Flux2KleinModelConfig,
+    Flux2KleinSettings,
+    Flux2Progress,
+)
+from .model_registry import (
+    CURATED_MODEL_PROFILES,
+    MODEL_ARTIFACTS,
+    AutoRoute,
+    ControlType,
+    CuratedModelProfile,
+    HashPolicy,
+    InputMode,
+    ModelArtifact,
+    ModelStatus,
+    RuntimeFamily,
+    VerifiedFile,
+    get_model_profile,
+    zero_click_profiles,
 )
 from .models import (
     BackendCapabilities,
@@ -57,10 +84,28 @@ from .presets import (
     PresetManager,
     get_preset,
 )
+from .prompt_normalization import (
+    DESIGN_EDIT_PROMPT_TEMPLATE,
+    M2M100_KO_EN_DOWNLOAD_BYTES,
+    M2M100_KO_EN_FILES,
+    M2M100_KO_EN_MAX_INPUT_TOKENS,
+    M2M100_KO_EN_MODEL_ID,
+    M2M100_KO_EN_REVISION,
+    M2M100_KO_EN_WEIGHTS_SHA256,
+    KoreanEnglishTranslator,
+    M2M100KoreanEnglishTranslator,
+    NormalizedPrompt,
+    PromptNormalizationStatus,
+    TranslationSetupCancelled,
+    TranslatorMetadata,
+    contains_hangul,
+    enhance_design_edit_prompt,
+    normalize_prompt,
+)
 from .studio import Studio
 from .study import Study
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = [
     "AIsketcherError",
@@ -73,8 +118,15 @@ __all__ = [
     "CapabilityReport",
     "CapabilitySeverity",
     "CONFIG_SCHEMA_VERSION",
+    "DESIGN_EDIT_PROMPT_TEMPLATE",
     "DiffusersBackend",
+    "DiffusersGenerationCancelled",
     "FakeBackend",
+    "Flux2GenerationCancelled",
+    "Flux2KleinBackend",
+    "Flux2KleinModelConfig",
+    "Flux2KleinSettings",
+    "Flux2Progress",
     "GenerationRequest",
     "GenerationResult",
     "GenerationError",
@@ -83,14 +135,30 @@ __all__ = [
     "InstallResult",
     "IntegrityError",
     "Intent",
+    "InputMode",
+    "KoreanEnglishTranslator",
+    "M2M100_KO_EN_MODEL_ID",
+    "M2M100_KO_EN_REVISION",
+    "M2M100_KO_EN_DOWNLOAD_BYTES",
+    "M2M100_KO_EN_FILES",
+    "M2M100_KO_EN_MAX_INPUT_TOKENS",
+    "M2M100_KO_EN_WEIGHTS_SHA256",
+    "M2M100KoreanEnglishTranslator",
     "ModelReference",
+    "ModelArtifact",
+    "ModelStatus",
     "ModelUnavailableError",
     "OptionalDependencyError",
     "PRESETS",
+    "CURATED_MODEL_PROFILES",
+    "MODEL_ARTIFACTS",
+    "NormalizedPrompt",
     "PreparationDiagnostics",
     "PreparedSketch",
     "PresetDefinition",
     "PresetManager",
+    "PromptNormalizationStatus",
+    "TranslationSetupCancelled",
     "Recipe",
     "RemovedFeatureError",
     "ReplayError",
@@ -103,17 +171,29 @@ __all__ = [
     "Studio",
     "Study",
     "TechnicalScores",
+    "TranslatorMetadata",
+    "AutoRoute",
+    "ControlType",
+    "CuratedModelProfile",
+    "HashPolicy",
+    "RuntimeFamily",
     "UnsafeModelError",
     "UnsupportedCapabilityError",
     "ValidationError",
     "VariationStrength",
+    "VerifiedFile",
     "diagnose",
+    "contains_hangul",
     "default_project_config_path",
     "default_user_config_path",
     "get_preset",
+    "get_model_profile",
+    "enhance_design_edit_prompt",
     "make_canny",
     "load_config",
     "load_config_file",
+    "normalize_prompt",
     "prepare",
     "save_config",
+    "zero_click_profiles",
 ]

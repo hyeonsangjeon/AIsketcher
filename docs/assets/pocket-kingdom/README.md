@@ -15,7 +15,7 @@ scout/contact-sheet.png     ordered overview
 variation/variation-01..04  subtle children of the selected scout
 variation/manifest.json     replayable lineage and MPS runtime evidence
 result.png                  human-selected variation
-manifest.json               replayable scout record used by Guided Sample
+manifest.json               replayable documentation scout record
 provenance.json             publication and artwork provenance
 ```
 
@@ -29,8 +29,8 @@ Publication requirements:
 - no secret, access token, absolute path, or original upload name;
 - artwork governed by `ARTWORK_LICENSE.md`, not the MIT source-code license.
 
-`manifest.json` is the Studio Guided Sample contract. The app enables that mode
-only after every declared file exists and its hash matches. The separate
-variation manifest points back to the Guided Sample selection. `result.png` is
-a documentation alias of the human-selected variation and is independently
-hashed in `provenance.json`.
+`manifest.json` is the replayable scout contract for this documentation-only
+canonical lineage example. The separate variation manifest points back to its
+scout selection. `result.png` is a documentation alias of the human-selected
+variation and is independently hashed in `provenance.json`. The packaged v0.3
+Studio Guided Sample instead uses the privacy-reviewed HPO hero study.

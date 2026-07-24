@@ -5,116 +5,120 @@
       "backend_metadata": {
         "backend": "diffusers",
         "device": "mps",
+        "mps_isolated": true,
         "mps_retries": 0,
         "sequential": true,
         "shared_pipeline_components": true,
         "vae_dtype": "float32"
       },
-      "file": "candidate:candidate-5e19f2fee2a1",
-      "id": "candidate-5e19f2fee2a1",
+      "file": "candidate:candidate-ffd8b272e6ec",
+      "id": "candidate-ffd8b272e6ec",
       "parent_id": null,
       "scores": {
         "badges": [
+          "cleanest edges",
           "most distinct"
         ],
-        "distinctiveness": 0.208451,
-        "edge_cleanliness": 0.853813,
+        "distinctiveness": 0.324347,
+        "edge_cleanliness": 0.941729,
         "method": "edge-iou/density-distance/mean-pixel-distance-v1",
-        "structure_similarity": 0.373205
+        "structure_similarity": 0.089802
       },
-      "seed": 1230364807
+      "seed": 6764547109648557242
     },
     {
       "backend_metadata": {
         "backend": "diffusers",
         "device": "mps",
-        "mps_retries": 1,
+        "mps_isolated": true,
+        "mps_retries": 0,
         "sequential": true,
         "shared_pipeline_components": true,
         "vae_dtype": "float32"
       },
-      "file": "candidate:candidate-b1df77935457",
-      "id": "candidate-b1df77935457",
-      "parent_id": null,
-      "scores": {
-        "badges": [],
-        "distinctiveness": 0.187319,
-        "edge_cleanliness": 0.856605,
-        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
-        "structure_similarity": 0.387698
-      },
-      "seed": 570858588
-    },
-    {
-      "backend_metadata": {
-        "backend": "diffusers",
-        "device": "mps",
-        "mps_retries": 1,
-        "sequential": true,
-        "shared_pipeline_components": true,
-        "vae_dtype": "float32"
-      },
-      "file": "candidate:candidate-a728a0473680",
-      "id": "candidate-a728a0473680",
-      "parent_id": null,
-      "scores": {
-        "badges": [],
-        "distinctiveness": 0.177933,
-        "edge_cleanliness": 0.955209,
-        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
-        "structure_similarity": 0.414359
-      },
-      "seed": 1614830769
-    },
-    {
-      "backend_metadata": {
-        "backend": "diffusers",
-        "device": "mps",
-        "mps_retries": 1,
-        "sequential": true,
-        "shared_pipeline_components": true,
-        "vae_dtype": "float32"
-      },
-      "file": "candidate:candidate-50cf2a5f9cad",
-      "id": "candidate-50cf2a5f9cad",
+      "file": "candidate:candidate-c2b85f03bafd",
+      "id": "candidate-c2b85f03bafd",
       "parent_id": null,
       "scores": {
         "badges": [
-          "closest structure",
-          "cleanest edges"
+          "closest structure"
         ],
-        "distinctiveness": 0.165375,
-        "edge_cleanliness": 0.989116,
+        "distinctiveness": 0.301577,
+        "edge_cleanliness": 0.775736,
         "method": "edge-iou/density-distance/mean-pixel-distance-v1",
-        "structure_similarity": 0.426114
+        "structure_similarity": 0.110626
       },
-      "seed": 1197419234
+      "seed": 6854547109648557242
+    },
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-e78fff7c6921",
+      "id": "candidate-e78fff7c6921",
+      "parent_id": null,
+      "scores": {
+        "badges": [],
+        "distinctiveness": 0.267569,
+        "edge_cleanliness": 0.786622,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.093334
+      },
+      "seed": 6634547109688557242
+    },
+    {
+      "backend_metadata": {
+        "backend": "diffusers",
+        "device": "mps",
+        "mps_isolated": true,
+        "mps_retries": 0,
+        "sequential": true,
+        "shared_pipeline_components": true,
+        "vae_dtype": "float32"
+      },
+      "file": "candidate:candidate-f15e4d703ae1",
+      "id": "candidate-f15e4d703ae1",
+      "parent_id": null,
+      "scores": {
+        "badges": [],
+        "distinctiveness": 0.286177,
+        "edge_cleanliness": 0.508822,
+        "method": "edge-iou/density-distance/mean-pixel-distance-v1",
+        "structure_similarity": 0.088293
+      },
+      "seed": 6764547109648557243
     }
   ],
   "files": {
-    "candidate:candidate-50cf2a5f9cad": {
-      "path": "scout/scout-04.png",
-      "sha256": "58dad4cb91dedc2f9530f5b7785065ee60edc5e4fc22bb38f604b1dc8b5e0310"
-    },
-    "candidate:candidate-5e19f2fee2a1": {
-      "path": "scout/scout-01.png",
-      "sha256": "d4fbf87f14d06f5e3d0d78632d10660645323cb03d480072e44069fc2e0cb6cd"
-    },
-    "candidate:candidate-a728a0473680": {
-      "path": "scout/scout-03.png",
-      "sha256": "1526f1bd54e6644d732cf986f0246469c43473d578e2b165794fc8046ce6728a"
-    },
-    "candidate:candidate-b1df77935457": {
+    "candidate:candidate-c2b85f03bafd": {
       "path": "scout/scout-02.png",
-      "sha256": "c743a4dd80c771a50292ed4a25feb2f0f5dd3db603cf9811d9f156d4871ae5e6"
+      "sha256": "7f87610206eb048022269d6af4c78663e90b51fec7f83e4dd14f74af616c1b09"
+    },
+    "candidate:candidate-e78fff7c6921": {
+      "path": "scout/scout-03.png",
+      "sha256": "a3e2eecc89259f0853601eac04bd9b683d8f012e1d587b68eef05c3376168e59"
+    },
+    "candidate:candidate-f15e4d703ae1": {
+      "path": "scout/scout-04.png",
+      "sha256": "112972ea6be5b2d91c7ff83a5b24cc0d7bb6a2ab8a005c6761438b114a53b426"
+    },
+    "candidate:candidate-ffd8b272e6ec": {
+      "path": "scout/scout-01.png",
+      "sha256": "abb18ea57bbbf9e5d5d3a7545fe77920b8106f2eee41729510ffce0dce9bb6b6"
     },
     "contact_sheet": {
       "path": "scout/contact-sheet.png",
-      "sha256": "68924e1d857c58a20e05975b309edd68dd132ff6ca26a67643337dce14e167cb"
+      "sha256": "8205733e5080fb03fa25cca82c03eb810c74226b6fd735934458cd9c05986497"
     },
     "control": {
       "path": "prepared/control.png",
-      "sha256": "2f629629c2c3e1759cbdc6ddc3f2f9d135595641c7d9c19fc1810ff4984522f4"
+      "sha256": "24780b3e469e3de53659f0c8b047667301e983d05cc44545983c1dc2d776ce8e"
     },
     "source": {
       "path": "prepared/source.png",
@@ -122,6 +126,9 @@
     }
   },
   "kind": "exploration",
+  "provenance": {
+    "generator": "AIsketcher v2 bounded HPO · historical SDXL Canny"
+  },
   "lineage": {
     "locks": [],
     "parent_id": null,
@@ -133,8 +140,8 @@
       "issues": [],
       "supported": true
     },
-    "control_strength": 0.75,
-    "guidance_scale": 5.0,
+    "control_strength": 0.55,
+    "guidance_scale": 7.0,
     "height": 576,
     "locks": [],
     "models": [
@@ -149,18 +156,18 @@
         "role": "controlnet"
       }
     ],
-    "negative_prompt": "text, lettering, logo, watermark, picture frame, curtain, printed backdrop, wallpaper pattern, flat vector fill, glossy plastic, oversaturated colors, harsh outlines, clutter, malformed faces, duplicate limbs",
+    "negative_prompt": "typography, captions, watermark, logo, photorealistic people, flat watercolor wash, muddy pastel, washed-out colors, low contrast, malformed faces, duplicate characters, extra limbs, white central void, generic tent, cropped main silhouette, flat empty composition, visual clutter",
     "preset": "sdxl-canny-lite@1",
     "profile": "graphic_design",
-    "prompt": "Refined cut-paper diorama. Triangular group silhouette: floating ghost left, coral-hooded explorer center, golden orb and folded crystal right. Friendly geometric creatures, layered matte cardstock, crisp hand-cut edges, navy, turquoise, coral, cream and warm gold, subtle paper grain, soft studio shadows, clean warm-gray background, polished editorial illustration.",
+    "prompt": "An elaborate miniature fantasy country built in the sketch's tall letter A silhouette, populated by delightful tiny mascots. Painted metal towers, enamel creatures, glowing glass windows, layered architectural depth, vivid cyan, cobalt, vermilion, yellow and gold, crisp handcrafted details, dramatic studio lighting, premium concept maquette photograph.",
     "scheduler": "unipc",
-    "steps": 24,
+    "steps": 36,
     "structure": "balanced",
     "variation_strength": null,
     "width": 768
   },
-  "recipe_sha256": "0070196590e422291848f29fac01697c67902a93dd15088e70814394a89b0a12",
-  "run_id": "study-96c55e134d5c48cb",
+  "recipe_sha256": "57e36a609469561681bd3861d0e868cf18f8da4c872a2cb3ab26cfec1331cdbb",
+  "run_id": "study-hero-hpo-2026",
   "runtime": {
     "aisketcher": "0.2.0",
     "backend": "diffusers",
@@ -176,32 +183,32 @@
   "seed_plan": {
     "mode": "explicit",
     "seeds": [
-      1230364807,
-      570858588,
-      1614830769,
-      1197419234
+      6764547109648557242,
+      6854547109648557242,
+      6634547109688557242,
+      6764547109648557243
     ]
   },
-  "selection": "candidate-50cf2a5f9cad",
+  "selection": "candidate-ffd8b272e6ec",
   "source": {
     "canny": {
       "aperture_size": 3,
-      "high": 224,
+      "high": 160,
       "l2_gradient": false,
-      "low": 90
+      "low": 140
     },
     "diagnostics": {
-      "border_edge_ratio": 0.000364,
-      "component_count": 234,
+      "border_edge_ratio": 0.000445,
+      "component_count": 278,
       "contrast": 0.274599,
-      "edge_density": 0.05587,
+      "edge_density": 0.055863,
       "flags": {
         "crop_risk": false,
         "edge_dense": false,
         "edge_sparse": false,
         "low_contrast": false
       },
-      "fragmentation": 9.467934,
+      "fragmentation": 11.249595,
       "recommended_canny": {
         "aperture_size": 3,
         "high": 224,
@@ -210,8 +217,8 @@
       }
     },
     "original_size": [
-      2000,
-      1500
+      768,
+      576
     ],
     "prepared_size": [
       768,

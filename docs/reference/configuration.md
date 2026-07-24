@@ -24,7 +24,7 @@ aisketcher studio --config ./aisketcher.yaml
 
 ```yaml
 schema_version: 1
-preset: "sdxl-canny-lite@1"
+preset: "flux2-klein-edit@1"
 device: "auto"
 output_count: 4
 seed_mode: "scout"
@@ -43,8 +43,8 @@ error.
 | Key | Default | Accepted values | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | `1` | `1` | Settings contract version; required in every file. |
-| `preset` | `sdxl-canny-lite@1` | A registered preset or alias | Initial local model preset. It is normalized to its canonical versioned name. |
-| `device` | `auto` | `auto`, `cuda`, `mps`, `cpu` | Preferred backend device. The built-in live SDXL Studio does not support CPU generation. |
+| `preset` | `flux2-klein-edit@1` | A registered preset or alias | Initial local model preset. It is normalized to its canonical versioned name. FLUX.2 Klein Edit is the recommended live default; SDXL Canny presets are Legacy compatibility options. |
+| `device` | `auto` | `auto`, `cuda`, `mps`, `cpu` | Preferred backend device. The supported FLUX.2 interactive path requires CUDA; MPS is experimental and limited to the Legacy SDXL backend. Packaged Studio live generation is disabled on CPU. |
 | `output_count` | `4` | `1`, `4`, `8` | Initial number of scout or variation outputs. |
 | `seed_mode` | `scout` | `scout`, `locked`, `explicit` | Initial seed-plan mode. |
 | `seed` | `null` | non-negative 63-bit integer or `null` | Starting value for `locked` mode only. A seed only identifies a run when paired with its complete recipe and runtime. |
@@ -56,6 +56,17 @@ error.
 the application to display `plan_install()` and call `install(...,
 confirm=True)`. Set it to `false` in hosted or read-only environments where an
 administrator prepares the cache.
+
+Common aliases normalize as follows:
+
+| Alias | Canonical preset |
+| --- | --- |
+| `auto`, `flux`, `flux2` | `flux2-klein-edit@1` |
+| `lite` | `sdxl-canny-lite@1` (Legacy) |
+| `quality` | `sdxl-canny@1` (Legacy) |
+
+Aliases are input conveniences only. The resolved configuration and exported
+manifest use the versioned canonical name.
 
 ## Resolution order
 
@@ -95,11 +106,15 @@ language:
 ```yaml
 # ./aisketcher.yaml
 schema_version: 1
-preset: "sdxl-canny-lite@1"
+preset: "flux2-klein-edit@1"
 output_count: 4
 seed_mode: "scout"
 seed: null
 ```
+
+An existing project may keep `sdxl-canny-lite@1` or `sdxl-canny@1` to replay a
+recorded Canny workflow. Do not rewrite a historical manifest or its canonical
+SDXL sample as FLUX.2; start a new study when changing model families.
 
 To prefill a recorded seed for a controlled comparison, create a user file with
 both fields explicitly:
@@ -114,9 +129,11 @@ would only create duplicate candidates. That value is within the supported
 from a different checkpoint, scheduler, prompt, control image, or hardware
 runtime; export the new study manifest as the actual evidence.
 
-Do not put tokens, credentials, private image paths, or Hugging Face cache
-contents in either file. AIsketcher’s curated v0.2 presets use public pinned
-repositories and do not define a credential field.
+Do not put tokens, credentials, private image paths, prompts, or Hugging Face
+cache contents in either file. AIsketcher’s curated presets use public pinned
+repositories and do not define a credential field. Korean original/model
+prompt pairs and translator revision metadata belong to the study manifest,
+not global YAML configuration.
 
 ## Environment variables
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 from pathlib import Path
 
@@ -30,9 +31,11 @@ REQUIRED_PAGES = {
     "changelog.md",
     "releases/0.2.0.md",
     "releases/0.2.1.md",
+    "releases/0.3.0.md",
 }
 
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
+RAW_HTML_TARGET = re.compile(r"(?:href|src)=[\"']([^\"']+)[\"']")
 NAV_PAGE = re.compile(r"^\s*-\s+[^:]+:\s+([^\s#]+\.md)\s*$", re.MULTILINE)
 PRIVATE_REFERENCE_NAMES = ("gpt" + " image", "gem" + "ini")
 
@@ -82,19 +85,69 @@ def test_social_preview_has_explicit_non_execution_provenance() -> None:
     ]
     with image_module.open(preview_path) as opened:
         assert list(opened.size) == repository_preview["dimensions"] == [1280, 640]
+        metadata_keys = {
+            key.lower()
+            for key, value in opened.info.items()
+            if value not in (None, b"", "")
+        }
+        metadata_keys.discard("dpi")
+        assert not opened.getexif()
+        assert not metadata_keys & {
+            "exif",
+            "icc_profile",
+            "photoshop",
+            "xmp",
+            "xml",
+        }
 
     override = (DOCS / "overrides/main.html").read_text(encoding="utf-8")
     assert "og:image" in override
     assert "twitter:card" in override
-    assert "aisketcher-social-preview-github.jpg" in override
+    preview_asset = repository_preview["asset"]
+    width, height = repository_preview["dimensions"]
+    expected_url = f"{{{{ config.site_url }}}}assets/{preview_asset}"
+    assert f'<meta property="og:image" content="{expected_url}">' in override
+    assert f'<meta property="og:image:width" content="{width}">' in override
+    assert f'<meta property="og:image:height" content="{height}">' in override
+    assert f'<meta name="twitter:image" content="{expected_url}">' in override
+
+
+def test_canonical_sample_raw_html_targets_resolve_from_built_page() -> None:
+    source = (DOCS / "canonical-sample.md").read_text(encoding="utf-8")
+    raw_targets = RAW_HTML_TARGET.findall(source)
+
+    assert raw_targets, "canonical sample must retain its interactive raw-HTML gallery"
+    missing: list[tuple[str, str]] = []
+    for raw_target in raw_targets:
+        target = raw_target.split("#", 1)[0].split("?", 1)[0]
+        if not target or target.startswith(("http://", "https://", "mailto:")):
+            continue
+        assert not target.startswith("/"), (
+            f"raw target must remain relative to the project Pages base path: {raw_target}"
+        )
+
+        # MkDocs writes this page to canonical-sample/index.html and does not
+        # rewrite URLs inside raw HTML. Resolve exactly as a browser does from
+        # the deployed /canonical-sample/ directory, then map the result back
+        # to docs/, whose non-Markdown assets are copied to the site verbatim.
+        deployed_target = posixpath.normpath(
+            posixpath.join("canonical-sample", target)
+        )
+        resolved = DOCS / deployed_target
+        if not resolved.is_file():
+            missing.append((raw_target, deployed_target))
+
+    assert not missing, f"canonical sample has broken deployed raw-HTML targets: {missing}"
 
 
 def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
     image_module = pytest.importorskip("PIL.Image")
+    capture_commit = "a5a3bd84c313bad904e8bb6ba24f15874ae71ef3"
     contracts = (
         {
             "asset": "aisketcher-studio-heritage-fixed-seed-en.jpg",
             "language": "en",
+            "dimensions": [1920, 1200],
             "documents": (
                 ROOT / "README.md",
                 DOCS / "index.md",
@@ -105,6 +158,7 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
         {
             "asset": "aisketcher-studio-guided-sample-ko.jpg",
             "language": "ko",
+            "dimensions": [1920, 1200],
             "documents": (DOCS / "ko/quickstart.md",),
             "excluded": (
                 ROOT / "README.md",
@@ -127,14 +181,55 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
         assert hashlib.sha256(image.read_bytes()).hexdigest() == provenance[
             "asset_sha256"
         ]
-        manifest = DOCS / "assets" / provenance["fixture_manifest"]
-        assert hashlib.sha256(manifest.read_bytes()).hexdigest() == provenance[
-            "fixture_manifest_sha256"
-        ]
+        fixture_manifests = provenance["fixture_manifests"]
+        documentation_manifest = fixture_manifests["documentation_source"]
+        packaged_manifest = fixture_manifests["packaged_runtime"]
+        for descriptor in (documentation_manifest, packaged_manifest):
+            manifest_path = ROOT / descriptor["path"]
+            assert manifest_path.is_file()
+            assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == descriptor[
+                "sha256"
+            ]
+
+        documentation_value = json.loads(
+            (ROOT / documentation_manifest["path"]).read_text(encoding="utf-8")
+        )
+        packaged_value = json.loads(
+            (ROOT / packaged_manifest["path"]).read_text(encoding="utf-8")
+        )
+        assert documentation_value["selection"] == packaged_value["selection"]
+        assert documentation_value["seed_plan"] == packaged_value["seed_plan"]
+        assert documentation_value["recipe"] == packaged_value["recipe"]
+        assert {
+            key: descriptor["sha256"]
+            for key, descriptor in documentation_value["files"].items()
+        } == {
+            key: descriptor["sha256"]
+            for key, descriptor in packaged_value["files"].items()
+        }
+
+        source_state = provenance["capture_source_state"]
+        assert source_state["base_commit"] == capture_commit
+        assert source_state["worktree_dirty"] is False
+        assert source_state["status"] in {
+            "pending-final-release-wheel-recapture",
+            "verified",
+        }
+        if source_state["status"] == "verified":
+            assert re.fullmatch(r"[0-9a-f]{64}", source_state["digest_sha256"])
+            capture_artifact = provenance["capture_artifact"]
+            assert capture_artifact["version"] == "0.3.0"
+            assert capture_artifact["filename"] == "aisketcher-0.3.0-py3-none-any.whl"
+            assert capture_artifact["sha256"] == source_state["digest_sha256"]
+            assert source_state["digest_kind"] == "installed-wheel-sha256"
+            assert capture_artifact["network_mode"] == "offline-guided-sample"
+        else:
+            assert source_state["digest_sha256"] is None
+            assert "base commit alone does not reproduce" in source_state["note"].lower()
         assert (image.parent / provenance["license_notice"]).resolve().is_file()
 
         with image_module.open(image) as opened:
-            assert list(opened.size) == provenance["dimensions"] == [1280, 946]
+            assert list(opened.size) == provenance["dimensions"] == contract["dimensions"]
             assert opened.format == "JPEG"
             assert not opened.getexif()
             metadata = {
@@ -155,6 +250,29 @@ def test_studio_screenshots_are_real_traceable_and_language_mapped() -> None:
             / "assets/aisketcher-studio-heritage-fixed-seed-en.provenance.json"
         ).read_text(encoding="utf-8")
     )
+    korean_provenance = json.loads(
+        (
+            DOCS
+            / "assets/aisketcher-studio-guided-sample-ko.provenance.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert english_provenance["capture_source_state"] == (
+        korean_provenance["capture_source_state"]
+    )
+    assert english_provenance["capture_artifact"] == (
+        korean_provenance["capture_artifact"]
+    )
+    for key in (
+        "fixture",
+        "fixture_manifests",
+        "fixture_provenance",
+        "fixture_provenance_sha256",
+        "selected_candidate",
+        "selected_seed",
+        "recipe_sha256",
+        "preset",
+    ):
+        assert english_provenance[key] == korean_provenance[key]
     assert english_provenance["selected_seed"] == 6764547109648557242
     fixture_provenance = DOCS / "assets" / english_provenance["fixture_provenance"]
     assert hashlib.sha256(fixture_provenance.read_bytes()).hexdigest() == (

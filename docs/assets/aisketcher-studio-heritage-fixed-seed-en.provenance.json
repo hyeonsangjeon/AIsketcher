@@ -1,18 +1,39 @@
 {
   "schema": "aisketcher.ui-screenshot-provenance/v1",
   "asset": "aisketcher-studio-heritage-fixed-seed-en.jpg",
-  "asset_sha256": "76f2d6780cf1cf12531168ec4e13f495a5d24b13031ff6da23e6edc4100fdbd7",
-  "asset_bytes": 227930,
-  "dimensions": [1280, 946],
-  "captured_at": "2026-07-17",
-  "captured_from_commit": "4e8d66d9abdd6925ab615233666e471401882e99",
-  "captured_from_worktree": true,
+  "asset_sha256": "15ad68de1496d1e46722e4dca04a7de607692055b75c0a39fbe35391309d6fb2",
+  "asset_bytes": 383695,
+  "dimensions": [1920, 1200],
+  "captured_at": "2026-07-24",
+  "capture_source_state": {
+    "base_commit": "a5a3bd84c313bad904e8bb6ba24f15874ae71ef3",
+    "worktree_dirty": false,
+    "status": "verified",
+    "digest_kind": "installed-wheel-sha256",
+    "digest_sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
+    "note": "Captured from an isolated Python 3.12 installation of the exact clean checkpoint wheel in offline Guided Sample mode."
+  },
+  "capture_artifact": {
+    "filename": "aisketcher-0.3.0-py3-none-any.whl",
+    "version": "0.3.0",
+    "sha256": "2a0408c3059b2023a408ca4ae9d62eb225072ec85c0b98e791ed20e24879fd94",
+    "install_extra": "demo",
+    "network_mode": "offline-guided-sample"
+  },
   "surface": "packaged local Gradio Studio",
   "view": "Simple",
   "language": "en",
   "fixture": "heritage-studio-hero-hpo-en",
-  "fixture_manifest": "heritage-studio-hero-hpo-en/manifest.json",
-  "fixture_manifest_sha256": "a940196ca8625ae57aaeb3d02e7564eecba6456116b7bbf691a97ceee9ae02be",
+  "fixture_manifests": {
+    "documentation_source": {
+      "path": "docs/assets/heritage-studio-hero-hpo-en/manifest.json",
+      "sha256": "a940196ca8625ae57aaeb3d02e7564eecba6456116b7bbf691a97ceee9ae02be"
+    },
+    "packaged_runtime": {
+      "path": "src/aisketcher/studio_app/assets/pocket-kingdom/manifest.json",
+      "sha256": "ac937fc785fd53f6c55e3fb8aca15c150efc44feca381e2d2f0d5dc4ac4fd0b5"
+    }
+  },
   "fixture_provenance": "heritage-studio-hero-hpo-en/provenance.json",
   "fixture_provenance_sha256": "737adde54b208b0d454133330605c969736b4ef04a36f727fc4747a02c190b9d",
   "selected_candidate": "candidate-ffd8b272e6ec",

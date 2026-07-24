@@ -30,8 +30,12 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--force", action="store_true", help="replace an existing settings file")
     init.add_argument(
         "--preset",
-        default="sdxl-canny-lite@1",
-        choices=("sdxl-canny-lite@1", "sdxl-canny@1"),
+        default="flux2-klein-edit@1",
+        choices=(
+            "flux2-klein-edit@1",
+            "sdxl-canny-lite@1",
+            "sdxl-canny@1",
+        ),
     )
     init.add_argument("--device", default="auto", choices=("auto", "cuda", "mps", "cpu"))
     init.add_argument("--outputs", type=int, default=4, choices=(1, 4, 8))
@@ -89,6 +93,7 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     # Optional UI and model imports stay behind the explicit Studio command so
     # the lightweight SDK and `aisketcher init` never import Gradio or Torch.
     from . import PresetManager, Studio
+    from .prompt_normalization import M2M100KoreanEnglishTranslator
     from .studio_app import AppController, build_app
 
     manager = PresetManager(
@@ -106,11 +111,20 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     controller = AppController(
         studio_factory=studio_factory,
         model_installer=manager,
+        prompt_translator=M2M100KoreanEnglishTranslator(
+            cache_dir=str(manager.cache_dir / "translation"),
+        ),
     )
     demo = build_app(
         controller,
         language=config.language,
         default_preset=config.preset,
+        # The concrete 2026 default is also the implementation behind Auto.
+        # Keep the first-run Simple surface friendly while still honoring an
+        # explicitly configured legacy preset.
+        default_simple_model=(
+            "auto" if config.preset == "flux2-klein-edit@1" else config.preset
+        ),
         default_output_count=config.output_count,
         default_seed_mode=str(config.seed_mode),
         default_seed=config.seed,

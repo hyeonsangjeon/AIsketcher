@@ -3,8 +3,7 @@
 This directory contains the previous fixed-seed four-direction study used for
 the first English Studio capture. The current Hero fixture lives in
 `../heritage-studio-hero-hpo-en/`. This study remains as compatibility and seed
-comparison evidence; it is separate from the Pocket Kingdom Guided Sample
-bundled in the Python wheel.
+comparison evidence; it is not the Guided Sample bundled in the Python wheel.
 
 The selected first direction keeps the recorded 2023 seed
 `6764547109648557242`. The next two seeds are the alternatives preserved in the

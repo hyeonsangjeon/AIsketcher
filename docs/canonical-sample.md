@@ -10,9 +10,9 @@
 
 <figure class="image-compare" data-label="Reveal the Pocket Kingdom source and selected result" data-start="48">
   <div class="image-compare__stage">
-    <img src="assets/pocket-kingdom/source.png" alt="An abstract pencil drawing with a triangular group of playful characters and geometric shapes">
+    <img src="../assets/pocket-kingdom/source.png" alt="An abstract pencil drawing with a triangular group of playful characters and geometric shapes">
     <div class="image-compare__after">
-      <img src="assets/pocket-kingdom/result.png" alt="The selected locally generated pastel paper-diorama direction">
+      <img src="../assets/pocket-kingdom/result.png" alt="The selected locally generated pastel paper-diorama direction">
     </div>
   </div>
   <div class="image-compare__labels"><span>Source sketch</span><span>Selected direction</span></div>
@@ -25,26 +25,26 @@ any image below to enlarge it.
 
 <div class="sample-gallery" aria-label="Four Pocket Kingdom scout directions">
   <figure>
-    <a href="assets/pocket-kingdom/scout/scout-01.png" data-lightbox data-caption="Direction 1 · seed 1230364807 · most distinct">
-      <img src="assets/pocket-kingdom/scout/scout-01.png" alt="Direction 1, a dark gray, coral, and turquoise paper diorama">
+    <a href="../assets/pocket-kingdom/scout/scout-01.png" data-lightbox data-caption="Direction 1 · seed 1230364807 · most distinct">
+      <img src="../assets/pocket-kingdom/scout/scout-01.png" alt="Direction 1, a dark gray, coral, and turquoise paper diorama">
     </a>
     <figcaption>01 · Most distinct<br><code>1230364807</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/scout/scout-02.png" data-lightbox data-caption="Direction 2 · seed 570858588">
-      <img src="assets/pocket-kingdom/scout/scout-02.png" alt="Direction 2, a pale framed paper collage">
+    <a href="../assets/pocket-kingdom/scout/scout-02.png" data-lightbox data-caption="Direction 2 · seed 570858588">
+      <img src="../assets/pocket-kingdom/scout/scout-02.png" alt="Direction 2, a pale framed paper collage">
     </a>
     <figcaption>02 · Alternate<br><code>570858588</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/scout/scout-03.png" data-lightbox data-caption="Direction 3 · seed 1614830769">
-      <img src="assets/pocket-kingdom/scout/scout-03.png" alt="Direction 3, a restrained cream and teal paper collage">
+    <a href="../assets/pocket-kingdom/scout/scout-03.png" data-lightbox data-caption="Direction 3 · seed 1614830769">
+      <img src="../assets/pocket-kingdom/scout/scout-03.png" alt="Direction 3, a restrained cream and teal paper collage">
     </a>
     <figcaption>03 · Alternate<br><code>1614830769</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/scout/scout-04.png" data-lightbox data-caption="Direction 4 · seed 1197419234 · selected · closest structure and cleanest edges">
-      <img src="assets/pocket-kingdom/scout/scout-04.png" alt="Selected direction 4, a warm pastel blue and coral paper diorama">
+    <a href="../assets/pocket-kingdom/scout/scout-04.png" data-lightbox data-caption="Direction 4 · seed 1197419234 · selected · closest structure and cleanest edges">
+      <img src="../assets/pocket-kingdom/scout/scout-04.png" alt="Selected direction 4, a warm pastel blue and coral paper diorama">
     </a>
     <figcaption>04 · Selected<br><code>1197419234</code></figcaption>
   </figure>
@@ -64,26 +64,26 @@ accents, and background treatment.
 
 <div class="sample-gallery" aria-label="Four Pocket Kingdom subtle variations">
   <figure>
-    <a href="assets/pocket-kingdom/variation/variation-01.png" data-lightbox data-caption="Variation 1 · seed 518939554">
-      <img src="assets/pocket-kingdom/variation/variation-01.png" alt="Variation 1 with a lightly grained warm paper background">
+    <a href="../assets/pocket-kingdom/variation/variation-01.png" data-lightbox data-caption="Variation 1 · seed 518939554">
+      <img src="../assets/pocket-kingdom/variation/variation-01.png" alt="Variation 1 with a lightly grained warm paper background">
     </a>
     <figcaption>V01 · <code>518939554</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/variation/variation-02.png" data-lightbox data-caption="Variation 2 · seed 158771503 · cleanest edges and most distinct">
-      <img src="assets/pocket-kingdom/variation/variation-02.png" alt="Variation 2 with a wavy layered paper background">
+    <a href="../assets/pocket-kingdom/variation/variation-02.png" data-lightbox data-caption="Variation 2 · seed 158771503 · cleanest edges and most distinct">
+      <img src="../assets/pocket-kingdom/variation/variation-02.png" alt="Variation 2 with a wavy layered paper background">
     </a>
     <figcaption>V02 · Cleanest edges<br><code>158771503</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/variation/variation-03.png" data-lightbox data-caption="Variation 3 · seed 878769505 · final human selection">
-      <img src="assets/pocket-kingdom/variation/variation-03.png" alt="Selected variation 3 with restrained texture and warm geometric accents">
+    <a href="../assets/pocket-kingdom/variation/variation-03.png" data-lightbox data-caption="Variation 3 · seed 878769505 · final human selection">
+      <img src="../assets/pocket-kingdom/variation/variation-03.png" alt="Selected variation 3 with restrained texture and warm geometric accents">
     </a>
     <figcaption>V03 · Final selection<br><code>878769505</code></figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/variation/variation-04.png" data-lightbox data-caption="Variation 4 · seed 808982494 · closest structure">
-      <img src="assets/pocket-kingdom/variation/variation-04.png" alt="Variation 4 with luminous peach paper accents">
+    <a href="../assets/pocket-kingdom/variation/variation-04.png" data-lightbox data-caption="Variation 4 · seed 808982494 · closest structure">
+      <img src="../assets/pocket-kingdom/variation/variation-04.png" alt="Variation 4 with luminous peach paper accents">
     </a>
     <figcaption>V04 · Closest structure<br><code>808982494</code></figcaption>
   </figure>
@@ -109,26 +109,26 @@ remain evidence rather than an automatic art director.
 
 <div class="sample-gallery sample-gallery--evidence" aria-label="Pocket Kingdom source preparation evidence">
   <figure>
-    <a href="assets/pocket-kingdom/prepared/source.png" data-lightbox data-caption="Normalized source passed to the model">
-      <img src="assets/pocket-kingdom/prepared/source.png" alt="Normalized Pocket Kingdom source sketch">
+    <a href="../assets/pocket-kingdom/prepared/source.png" data-lightbox data-caption="Normalized source passed to the model">
+      <img src="../assets/pocket-kingdom/prepared/source.png" alt="Normalized Pocket Kingdom source sketch">
     </a>
     <figcaption>Prepared source</figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/prepared/control.png" data-lightbox data-caption="Canny control passed to ControlNet">
-      <img src="assets/pocket-kingdom/prepared/control.png" alt="Canny edges used as the ControlNet condition">
+    <a href="../assets/pocket-kingdom/prepared/control.png" data-lightbox data-caption="Canny control passed to ControlNet">
+      <img src="../assets/pocket-kingdom/prepared/control.png" alt="Canny edges used as the ControlNet condition">
     </a>
     <figcaption>Model control</figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/scout/contact-sheet.png" data-lightbox data-caption="Ordered four-seed scout contact sheet">
-      <img src="assets/pocket-kingdom/scout/contact-sheet.png" alt="Contact sheet containing all four generated directions">
+    <a href="../assets/pocket-kingdom/scout/contact-sheet.png" data-lightbox data-caption="Ordered four-seed scout contact sheet">
+      <img src="../assets/pocket-kingdom/scout/contact-sheet.png" alt="Contact sheet containing all four generated directions">
     </a>
     <figcaption>Scout contact sheet</figcaption>
   </figure>
   <figure>
-    <a href="assets/pocket-kingdom/variation/contact-sheet.png" data-lightbox data-caption="Ordered four-seed variation contact sheet">
-      <img src="assets/pocket-kingdom/variation/contact-sheet.png" alt="Contact sheet containing all four subtle variations">
+    <a href="../assets/pocket-kingdom/variation/contact-sheet.png" data-lightbox data-caption="Ordered four-seed variation contact sheet">
+      <img src="../assets/pocket-kingdom/variation/contact-sheet.png" alt="Contact sheet containing all four subtle variations">
     </a>
     <figcaption>Variation contact sheet</figcaption>
   </figure>
@@ -138,8 +138,8 @@ The [scout manifest](assets/pocket-kingdom/manifest.json) and
 [variation manifest](assets/pocket-kingdom/variation/manifest.json) contain
 immutable model revisions, the resolved prompt and negative prompt, exact seeds,
 parent lineage, technical scores, file hashes, and runtime versions. Studio's
-**Guided Sample** reads the scout fixture directly, so trying the interface does
-not require model weights.
+current **Guided Sample** uses the separate privacy-reviewed HPO hero fixture;
+Pocket Kingdom remains this documentation-only canonical lineage example.
 
 !!! note "MPS reproducibility"
 
