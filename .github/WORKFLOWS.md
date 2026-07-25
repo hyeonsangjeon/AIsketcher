@@ -14,9 +14,12 @@ request validation and use protected deployment boundaries.
   successful `ci.yml` run for that exact immutable event SHA, builds and
   smoke-tests the distributions once in a read-only job, and records both
   SHA-256 digests. That Actions artifact enters the protected `pypi` environment
-  for Trusted Publishing. A confirmed manual dispatch from the exact tag remains
-  available for recovery after a failed or partial publication. The recovery
-  path requires an existing, non-draft GitHub Release for that exact tag. It
+  for Trusted Publishing. A confirmed manual dispatch from the current default
+  branch can select an exact existing tag for recovery after a failed or partial
+  publication. This deliberately uses the repaired workflow from `main` while
+  building the immutable tagged source; rerunning an old release run would reuse
+  the old workflow definition. The recovery path requires an existing,
+  non-draft GitHub Release for that exact tag. It
   downloads every file PyPI already has, verifies its advertised SHA-256, and
   compares its normalized archive contents with the newly verified build. A
   pre-existing wheel must also match the approved Actions wheel SHA-256 and bytes
@@ -59,13 +62,15 @@ version.
 The `release.published` event must come from a maintainer, GitHub App, or user
 token. Before any checkout, build, or PyPI upload, the workflow requires an
 existing published, non-prerelease GitHub Release whose tag resolves to a
-commit in the current default-branch history and still matches the immutable
-event SHA. It also waits for a successful first-party CI run whose head SHA is
-that same commit; a successful run for another commit cannot authorize the
-release. The same Release, tag, event-SHA, and ancestry checks run again
+commit in the current default-branch history. A release event must still match
+its immutable event SHA; a manual recovery resolves and records the immutable
+tag SHA independently of the workflow's `main` SHA. It also waits for a
+successful first-party CI run whose head SHA is that same tag commit; a
+successful run for another commit cannot authorize the release. The same
+Release, tag, resolved-SHA, and ancestry checks run again
 immediately before the PyPI state check and OIDC upload. GitHub intentionally
 does not start a second workflow when another workflow creates the Release with
-its default `GITHUB_TOKEN`; use the confirmed tag dispatch only after that
+its default `GITHUB_TOKEN`; use the confirmed default-branch dispatch only after that
 Release exists. Release assets are attached only after PyPI exposes and verifies
 the complete wheel and source-archive set. A retry keeps an existing asset only
 when its bytes match the canonical PyPI distribution, uploads missing assets,
