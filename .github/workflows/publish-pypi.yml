@@ -18,18 +18,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: pypi-${{ github.ref }}
+  group: pypi-${{ github.event.release.tag_name || format('v{0}', inputs.version) }}
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build and verify ${{ github.ref_name }}
+    name: Build and verify ${{ inputs.version || github.ref_name }}
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       actions: read # Required only to verify CI on the immutable event SHA.
       contents: read
     outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
       wheel_filename: ${{ steps.distributions.outputs.wheel_filename }}
       wheel_sha256: ${{ steps.distributions.outputs.wheel_sha256 }}
@@ -39,41 +41,65 @@ jobs:
       - name: Resolve and verify release version
         id: release
         env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           DISPATCH_CONFIRM: ${{ inputs.confirm }}
           DISPATCH_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
-            echo "Publish from a v-prefixed tag; got ${GITHUB_REF}." >&2
-            exit 1
-          fi
-
-          version="${GITHUB_REF_NAME#v}"
-          if [[ -z "${version}" || "${version}" == "${GITHUB_REF_NAME}" ]]; then
-            echo "Could not resolve a version from ${GITHUB_REF_NAME}." >&2
-            exit 1
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "release" && "${GITHUB_REF_NAME}" != "${RELEASE_TAG}" ]]; then
-            echo "Release tag ${RELEASE_TAG} does not match ${GITHUB_REF_NAME}." >&2
-            exit 1
-          fi
-
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ "${DISPATCH_CONFIRM}" != "publish" ]]; then
               echo 'Type "publish" in the confirmation field.' >&2
               exit 1
             fi
-            if [[ "${version}" != "${DISPATCH_VERSION}" ]]; then
-              echo "Requested ${DISPATCH_VERSION}; selected tag contains ${version}." >&2
+            if [[ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+              echo "Manual recovery must use the current ${DEFAULT_BRANCH} workflow." >&2
+              exit 1
+            fi
+            if [[ ! "${DISPATCH_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-z0-9]+([.-][a-z0-9]+)*)?$ ]]; then
+              echo "Requested version is not a supported release version: ${DISPATCH_VERSION}." >&2
+              exit 1
+            fi
+            version="${DISPATCH_VERSION}"
+            release_tag="v${version}"
+          else
+            if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+              echo "Publish from a v-prefixed tag; got ${GITHUB_REF}." >&2
+              exit 1
+            fi
+            release_tag="${GITHUB_REF_NAME}"
+            version="${release_tag#v}"
+            if [[ -z "${version}" || "${version}" == "${release_tag}" ]]; then
+              echo "Could not resolve a version from ${release_tag}." >&2
+              exit 1
+            fi
+            if [[ "${release_tag}" != "${RELEASE_TAG}" ]]; then
+              echo "Release tag ${RELEASE_TAG} does not match ${release_tag}." >&2
               exit 1
             fi
           fi
 
+          release_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${release_tag}" --jq '.sha'
+          )"
+          if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve immutable commit for ${release_tag}." >&2
+            exit 1
+          fi
+          if [[
+            "${GITHUB_EVENT_NAME}" == "release" &&
+            "${release_sha}" != "${GITHUB_SHA}"
+          ]]; then
+            echo "Release tag ${release_tag} moved away from event SHA ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+
+          echo "release_sha=${release_sha}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Verify published release and default-branch ancestry
         env:
-          EVENT_SHA: ${{ github.sha }}
+          EVENT_SHA: ${{ steps.release.outputs.release_sha }}
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -126,7 +152,7 @@ jobs:
           fi
       - name: Require successful CI for the exact release commit
         env:
-          EVENT_SHA: ${{ github.sha }}
+          EVENT_SHA: ${{ steps.release.outputs.release_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           for attempt in {1..90}; do
@@ -183,6 +209,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          ref: ${{ steps.release.outputs.release_sha }}
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -192,14 +219,16 @@ jobs:
       - name: Run release tests
         run: python -m pytest
       - name: Pin the release build timestamp
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
         run: |
-          source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          source_date_epoch="$(git show -s --format=%ct "${RELEASE_SHA}")"
           if [[ ! "${source_date_epoch}" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Could not derive SOURCE_DATE_EPOCH from ${GITHUB_SHA}." >&2
+            echo "Could not derive SOURCE_DATE_EPOCH from ${RELEASE_SHA}." >&2
             exit 1
           fi
           echo "SOURCE_DATE_EPOCH=${source_date_epoch}" >> "${GITHUB_ENV}"
-          echo "Building ${GITHUB_SHA} with SOURCE_DATE_EPOCH=${source_date_epoch}."
+          echo "Building ${RELEASE_SHA} with SOURCE_DATE_EPOCH=${source_date_epoch}."
       - name: Build wheel and source archive
         run: |
           python -m build --sdist
@@ -312,13 +341,14 @@ jobs:
     steps:
       - name: Verify matching published GitHub Release
         env:
-          EVENT_SHA: ${{ github.sha }}
+          EVENT_SHA: ${{ needs.build.outputs.release_sha }}
+          EXPECTED_TAG: ${{ needs.build.outputs.release_tag }}
           EXPECTED_VERSION: ${{ needs.build.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           expected_tag="v${EXPECTED_VERSION}"
-          if [[ "${GITHUB_REF}" != "refs/tags/${expected_tag}" ]]; then
-            echo "Expected refs/tags/${expected_tag}; got ${GITHUB_REF}." >&2
+          if [[ "${EXPECTED_TAG}" != "${expected_tag}" ]]; then
+            echo "Resolved tag ${EXPECTED_TAG} does not match ${expected_tag}." >&2
             exit 1
           fi
 
@@ -350,10 +380,11 @@ jobs:
           path: dist
       - name: Attach missing distributions without replacing release assets
         env:
+          EXPECTED_TAG: ${{ needs.build.outputs.release_tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           release_json="$(
-            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${EXPECTED_TAG}"
           )"
           existing_names="$(jq -r '.assets[].name' <<< "${release_json}")"
           missing=()
@@ -362,7 +393,7 @@ jobs:
             name="$(basename "${distribution}")"
             if grep -Fqx -- "${name}" <<< "${existing_names}"; then
               comparison_dir="$(mktemp -d)"
-              gh release download "${GITHUB_REF_NAME}" \
+              gh release download "${EXPECTED_TAG}" \
                 --repo "${GITHUB_REPOSITORY}" \
                 --pattern "${name}" \
                 --dir "${comparison_dir}"
@@ -379,7 +410,7 @@ jobs:
           done
 
           if (( ${#missing[@]} )); then
-            gh release upload "${GITHUB_REF_NAME}" "${missing[@]}" \
+            gh release upload "${EXPECTED_TAG}" "${missing[@]}" \
               --repo "${GITHUB_REPOSITORY}"
           else
             echo "All verified distributions are already attached."
@@ -436,7 +467,7 @@ jobs:
           fi
       - name: Recheck release gate immediately before PyPI
         env:
-          EVENT_SHA: ${{ github.sha }}
+          EVENT_SHA: ${{ needs.build.outputs.release_sha }}
           EXPECTED_VERSION: ${{ needs.build.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |

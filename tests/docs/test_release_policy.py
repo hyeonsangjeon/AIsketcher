@@ -149,7 +149,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "run: python -m build\n" not in package_build_step
     assert artifact_identity < prepublish_gate < pypi_state < trusted_publish
     assert trusted_publish < published_identity < canonical_upload
-    assert 'git show -s --format=%ct "${GITHUB_SHA}"' in workflow
+    assert 'git show -s --format=%ct "${RELEASE_SHA}"' in workflow
     assert 'echo "SOURCE_DATE_EPOCH=${source_date_epoch}" >> "${GITHUB_ENV}"' in workflow
     assert "wheel_sha256: ${{ steps.distributions.outputs.wheel_sha256 }}" in workflow
     assert "sdist_sha256: ${{ steps.distributions.outputs.sdist_sha256 }}" in workflow
@@ -192,11 +192,16 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert 'gh api "repos/${GITHUB_REPOSITORY}/commits/${expected_tag}"' in workflow
     assert '"repos/${GITHUB_REPOSITORY}/compare/${expected_tag}...${default_branch}"' in workflow
     assert "Verify matching published GitHub Release" in workflow
-    assert workflow.count("EVENT_SHA: ${{ github.sha }}") == 4
+    assert workflow.count(
+        "EVENT_SHA: ${{ steps.release.outputs.release_sha }}"
+    ) == 2
+    assert workflow.count(
+        "EVENT_SHA: ${{ needs.build.outputs.release_sha }}"
+    ) == 2
     assert workflow.count('"${tag_sha}" != "${EVENT_SHA}"') == 3
     assert workflow.count("release_prerelease=") == 3
     assert 'gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${expected_tag}"' in workflow
-    assert '"${GITHUB_REF}" != "refs/tags/${expected_tag}"' in workflow
+    assert '"${EXPECTED_TAG}" != "${expected_tag}"' in workflow
     assert "release_draft=\"$(jq -r '.draft'" in workflow
     assert "gh release upload" in workflow
     assert "gh release download" in workflow
@@ -223,6 +228,15 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "--clobber" not in workflow
     assert "skip-existing" not in workflow
     assert "DISPATCH_CONFIRM" in workflow
+    assert 'refs/heads/${DEFAULT_BRANCH}' in workflow
+    assert 'release_tag="v${version}"' in workflow
+    assert "release_sha: ${{ steps.release.outputs.release_sha }}" in workflow
+    assert "release_tag: ${{ steps.release.outputs.release_tag }}" in workflow
+    assert "ref: ${{ steps.release.outputs.release_sha }}" in workflow
+    assert (
+        "group: pypi-${{ github.event.release.tag_name || "
+        "format('v{0}', inputs.version) }}"
+    ) in workflow
     assert "password:" not in workflow
     assert "api-token" not in workflow.lower()
     assert "EXPECTED_VERSION" in workflow
@@ -320,6 +334,11 @@ def test_release_docs_define_the_exact_wheel_and_sdist_recovery_boundary() -> No
     )
     assert "normalized-recovery exception" in release_notes
     assert "canonical PyPI/Release distribution set" in release_notes
+    normalized_workflow_docs = " ".join(workflow_docs.split())
+    normalized_release_notes = " ".join(release_notes.split())
+    assert "current default branch" in normalized_workflow_docs
+    assert "old workflow definition" in normalized_workflow_docs
+    assert "stale workflow definition" in normalized_release_notes
 
 
 def test_pages_uses_reviewed_full_sha_actions() -> None:
