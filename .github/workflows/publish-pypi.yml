@@ -436,7 +436,7 @@ jobs:
         with:
           name: python-distributions-${{ needs.build.outputs.version }}
           path: dist
-      - name: Verify the approved Actions artifact identity
+      - name: Verify the recorded Actions artifact identity
         env:
           EXPECTED_SDIST: ${{ needs.build.outputs.sdist_filename }}
           EXPECTED_SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
@@ -628,7 +628,7 @@ jobs:
                   and downloaded_digest != expected_wheel_sha256
               ):
                   raise SystemExit(
-                      "Pre-existing PyPI wheel bytes do not match the approved "
+                      "Pre-existing PyPI wheel bytes do not match the recorded "
                       "Actions wheel SHA-256."
                   )
               subprocess.run(
@@ -730,7 +730,7 @@ jobs:
           }
           local = {path.name: path for path in Path("dist").iterdir() if path.is_file()}
           if set(local) != set(expected):
-              raise SystemExit("The approved local distribution set changed unexpectedly.")
+              raise SystemExit("The recorded local distribution set changed unexpectedly.")
           uploaded_names = {
               path.name
               for path in Path("upload-dist").iterdir()
@@ -776,7 +776,7 @@ jobs:
                       )
                       if requires_actions_exact and recorded != expected[filename]:
                           raise RetryablePyPIState(
-                              "PyPI metadata does not match the approved Actions "
+                              "PyPI metadata does not match the recorded Actions "
                               f"artifact for {filename}."
                           )
 
@@ -797,7 +797,7 @@ jobs:
                           and downloaded_digest != expected[filename]
                       ):
                           raise RetryablePyPIState(
-                              f"PyPI {filename} bytes do not match the approved "
+                              f"PyPI {filename} bytes do not match the recorded "
                               "Actions artifact."
                           )
                       subprocess.run(
