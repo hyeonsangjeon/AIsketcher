@@ -130,7 +130,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     package_build = workflow.index("Build wheel and source archive")
     record_digests = workflow.index("Record the canonical Actions artifact digests")
     artifact_upload = workflow.index("Upload verified release distributions")
-    artifact_identity = workflow.index("Verify the approved Actions artifact identity")
+    artifact_identity = workflow.index("Verify the recorded Actions artifact identity")
     trusted_publish = workflow.index(
         "Publish only missing distributions with PyPI Trusted Publishing"
     )
@@ -169,7 +169,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "name == expected_wheel" in recovery_plan
     assert "downloaded_digest != expected_wheel_sha256" in recovery_plan
     assert (
-        "Pre-existing PyPI wheel bytes do not match the approved "
+        "Pre-existing PyPI wheel bytes do not match the recorded "
         in recovery_plan
     )
     published_verification = workflow[published_identity:canonical_upload]
@@ -180,7 +180,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
         published_verification
     )
     assert "requires_actions_exact" in published_verification
-    assert "PyPI {filename} bytes do not match the approved " in workflow
+    assert "PyPI {filename} bytes do not match the recorded " in workflow
     assert "EXPECTED_SDIST_SHA256" in workflow[published_identity:canonical_upload]
     assert "EXPECTED_WHEEL_SHA256" in workflow[published_identity:canonical_upload]
     assert "is not in " in workflow
@@ -326,16 +326,31 @@ def test_release_docs_define_the_exact_wheel_and_sdist_recovery_boundary() -> No
         assert "byte-reproducible" in text
         assert "wheel" in text
 
-    assert "must also match the approved Actions wheel SHA-256 and bytes" in (
-        workflow_docs
+    normalized_workflow_docs = " ".join(workflow_docs.split())
+    normalized_release_notes = " ".join(release_notes.split())
+    assert "must also match the recorded Actions wheel SHA-256 and bytes" in (
+        normalized_workflow_docs
     )
-    assert "The wheel must always match the Azure-approved Actions SHA-256" in (
-        workflow_docs
+    assert "The wheel must always match the recorded Actions SHA-256" in (
+        normalized_workflow_docs
     )
     assert "normalized-recovery exception" in release_notes
     assert "canonical PyPI/Release distribution set" in release_notes
-    normalized_workflow_docs = " ".join(workflow_docs.split())
-    normalized_release_notes = " ".join(release_notes.split())
+    for normalized in (normalized_workflow_docs, normalized_release_notes):
+        assert "Publishing the GitHub Release is the human release gate" in normalized
+        assert "does not require a second environment approval" in normalized
+        assert "tags matching `v*`" in normalized
+        assert "branch `main`" in normalized
+        assert "equivalent human gate" in normalized
+    assert "waits for its required reviewer" not in normalized_release_notes
+    assert "approval is the release hold point" not in normalized_workflow_docs
+    assert "before approval" not in normalized_release_notes
+    assert "Do not approve" not in normalized_workflow_docs
+    assert "Azure-approved" not in normalized_workflow_docs
+    assert "Azure-approved" not in normalized_release_notes
+    assert "Review pending deployments" in normalized_workflow_docs
+    assert "default branch is renamed" in normalized_workflow_docs
+    assert "Do not add an API token" in normalized_workflow_docs
     assert "current default branch" in normalized_workflow_docs
     assert "old workflow definition" in normalized_workflow_docs
     assert "stale workflow definition" in normalized_release_notes
