@@ -86,9 +86,10 @@ Workflow permissions are read-only unless a deployment job needs Pages, release
 assets, or OIDC. The release build has read-only Actions access only to verify
 the exact-SHA CI result, and the Pages build has read-only Pages access only to
 resolve the configured site. Every third-party action is pinned to the full
-commit resolved from its reviewed upstream release tag on 2026-07-24; the
-readable version remains beside the SHA as a YAML comment. Dependabot may
-propose a newer version, but the reviewed update must preserve full-SHA pinning.
+commit resolved from its reviewed upstream release tag; the readable version
+remains beside the SHA as a YAML comment. Dependabot may propose a newer
+version, but the reviewed update must verify the upstream tag and update its
+synchronized policy test while preserving full-SHA pinning.
 
 Upstream release pages:
 

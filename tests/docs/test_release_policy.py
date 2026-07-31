@@ -105,7 +105,7 @@ def test_pypi_uses_oidc_and_protected_environment() -> None:
     assert "id-token: write" in workflow
     assert "cache: pip" not in workflow
     assert (
-        "pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1"
+        "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2"
     ) in workflow
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7" in workflow
     assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7" in workflow
