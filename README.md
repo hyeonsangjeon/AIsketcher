@@ -2,173 +2,130 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/AIsketcher.svg)](https://pypi.org/project/AIsketcher/)
 [![GitHub tag](https://img.shields.io/github/v/tag/hyeonsangjeon/AIsketcher?sort=semver&label=tag)](https://github.com/hyeonsangjeon/AIsketcher/releases/latest)
+[![CI](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml/badge.svg)](https://github.com/hyeonsangjeon/AIsketcher/actions/workflows/ci.yml)
 
-**Turn one sketch into a traceable family of design directions.**
+**Turn one sketch into traceable design directions—not disconnected files you
+can never reproduce.**
 
-AIsketcher is a model-agnostic Python SDK for structure-guided visual
-exploration. It prepares a sketch, explores several seeded candidates, records
-the direction you pick, creates controlled variations, and exports a replayable
-manifest. It is designed for product designers, graphic designers, and
-sketchers who need more than a one-off image.
+AIsketcher is a model-independent Python toolkit for seed scouting, controlled
+variation, and replayable visual studies. It records the input, control,
+prompt provenance, actual seeds, selected parent, model revisions, lineage,
+and hashes around a local or hosted image backend.
 
 <p align="center">
-  <a href="https://hyeonsangjeon.github.io/AIsketcher/canonical-sample/">
-    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/v0.3.0/docs/assets/aisketcher-social-preview-github.jpg" width="1200" alt="Pocket Kingdom paper-art hero concept for AIsketcher">
+  <a href="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg">
+    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/main/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg" width="1200" alt="Actual AIsketcher Studio showing a source sketch, selected result, four recorded directions, prompt, structure setting, and seed evidence">
   </a>
 </p>
-<p align="center"><sub>Pocket Kingdom hero concept · marketing artwork, not an SDK execution claim · select to inspect the real local source, scout, variations, and replay evidence</sub></p>
+<p align="center"><sub>Actual local Studio with the bundled, hash-verified Guided Study · real source, four outputs, seeds, selection, and manifest · no model download</sub></p>
 
 [Documentation](https://hyeonsangjeon.github.io/AIsketcher/) ·
 [한국어 빠른 시작](https://hyeonsangjeon.github.io/AIsketcher/ko/quickstart/) ·
-[PyPI](https://pypi.org/project/AIsketcher/0.3.0/) ·
-[Migration from 0.0.x](https://hyeonsangjeon.github.io/AIsketcher/guides/migration/)
+[Model guide](https://hyeonsangjeon.github.io/AIsketcher/models/choosing-a-model/) ·
+[PyPI](https://pypi.org/project/AIsketcher/) ·
+[Feedback](https://github.com/hyeonsangjeon/AIsketcher/issues/new/choose)
 
-## Why AIsketcher
-
-- **Prepare with evidence:** normalize orientation and size, generate a control
-  image, and inspect actionable structure diagnostics before spending GPU time.
-- **Explore deliberately:** create 1, 4, or 8 candidates with an explicit seed
-  plan instead of repeatedly changing an undocumented seed.
-- **Pick and vary:** preserve the selected parent and make subtle, balanced, or
-  bold variations while recording how the active backend applied each
-  constraint.
-- **Replay the handoff:** export inputs, controls, recipes, seeds, lineage,
-  hashes, and runtime information as a portable study.
-- **Bring your backend:** use the Diffusers adapter or implement the small
-  backend protocol for another local or hosted image model.
-
-## Install
-
-AIsketcher 0.3.0 is published on
-[PyPI](https://pypi.org/project/AIsketcher/0.3.0/). The product name is
-**AIsketcher**, but the install identifier, Python import, and CLI are all
-lowercase `aisketcher`:
+## Try the real workflow in seconds
 
 ```bash
 pip install aisketcher
+aisketcher try
 ```
 
-Pin the public release when you need a reproducible install:
+This opens a bilingual, interactive tour of a real recorded study on
+`127.0.0.1`. It installs no Torch, Gradio, Diffusers, or model weights, sends no
+telemetry, and makes no external network request. Select each direction to inspect its
+seed and evidence; press `Ctrl+C` in the terminal when finished.
 
-```bash
-python -m pip install "aisketcher==0.3.0"
+That fast first run is deliberate. A 16–35 GB checkpoint download should not
+be the price of discovering what the package does.
+
+## What AIsketcher adds above a model
+
+```text
+prepare → explore → pick → vary → export → replay
 ```
 
-The lightweight SDK does not install Torch, Diffusers, model weights, or the
-Gradio runtime. Studio code and its Guided Sample are packaged; the `demo`
-extra adds the runtime needed to launch the UI.
+- **Comparable directions:** generate 1, 4, or 8 candidates from an explicit
+  seed plan instead of repeatedly changing an undocumented random seed.
+- **A recorded decision:** keep the chosen parent, variation strength, and
+  structure locks as lineage rather than relying on filenames.
+- **Reproducible handoff:** export images, recipe, exact seeds, model revisions,
+  prompt provenance, runtime, and hashes in one portable study.
+- **Backend independence:** use the built-in local adapters or implement the
+  small `Backend` protocol for a hosted, cloud, or in-house generator.
+- **Local-first inspection:** use the Studio without uploading sketches to an
+  AIsketcher service. The packaged app binds to localhost and public sharing is
+  disabled.
 
-For development from this repository:
+## Choose the model by its job
+
+There is no honest universal default. Version 0.4 makes the concrete role
+visible instead of calling one model an intelligent `Auto` router.
+
+| Studio choice | Best for | Limit |
+| --- | --- | --- |
+| **Fast Edit · FLUX.2 Klein** | photo restyling, flexible sketch interpretation, instruction edits; about 15–25 s/output on the validated T4 after loading | reference-image editing, not Canny; exact line locking is not guaranteed |
+| **Structure Lock · SDXL Canny Lite** | strict line/Canny studies and lower-memory legacy replay | older generation quality |
+| **Structure Lock+ · SDXL Canny** | full legacy ControlNet when line structure matters most | larger and slower legacy path |
+
+FLUX.2 Klein remains the fast local edit model because it is public,
+Apache-2.0, four-step, and T4-validated. It is no longer described as strict
+structure control. Z-Image Turbo + Union 2.1 Lite is the leading modern
+Structure candidate, and Qwen Image Edit 2509/2511 are Pro candidates. They
+will not become defaults until a published multi-input, four-seed benchmark
+beats the existing path on designer preference, structure, prompt adherence,
+failure rate, latency, VRAM, and cancellation. See the
+[model decision guide](https://hyeonsangjeon.github.io/AIsketcher/models/choosing-a-model/).
+
+## Install only the layer you need
+
+The install identifier, Python import, and CLI are lowercase `aisketcher`.
 
 ```bash
-python -m pip install -e ".[dev]"
+# Lightweight SDK + zero-download tour
+python -m pip install "aisketcher==0.4.0"
+
+# Local Gradio Studio + bundled Guided Study
+python -m pip install "aisketcher[demo]==0.4.0"
+
+# Studio plus local model runtimes
+python -m pip install "aisketcher[local,demo]==0.4.0"
 ```
 
-Install optional local generation or the Studio separately:
+Initialize the versioned YAML settings ledger once, then launch Studio:
 
 ```bash
-python -m pip install "aisketcher[demo]==0.3.0"
-python -m pip install "aisketcher[local,demo]==0.3.0"
-```
-
-The complete model-free first run is one line:
-
-```bash
-python -m pip install "aisketcher[demo]==0.3.0" && aisketcher init && aisketcher studio
-```
-
-Model downloads happen only after you explicitly choose a local preset. Guided
-Sample mode does not require a model or network connection: this repository
-includes a reviewed four-direction fixture with matching hashes and a real
-`aisketcher.manifest/v1` manifest.
-
-For a new live study, **Auto** selects the T4-validated
-`flux2-klein-edit@1` preset. FLUX.2 Klein is the recommended default for
-sketch-to-design and photo-led edits; the SDXL Canny presets remain available
-only for legacy manifest replay or intentional edge-conditioned work. Preparing
-a model shows the pinned revisions, transfer size, cache destination, licenses,
-and the pinned Korean→English helper before any download. The helper is
-MIT-licensed `facebook/m2m100_418M`, pinned to revision
-`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636`, and adds about 1.9 GB when it is
-not cached. The same confirmation prepares both the selected model and that
-helper when either is missing. It also verifies every cached image-model
-runtime file — weights, configuration, schedulers, indexes, and tokenizers —
-against its reviewed size and SHA-256 once per Studio process before the
-backend can load it. A new process may initially label existing files
-“Not yet verified”; on the validated T4, checking the 16.2 GB FLUX cache can
-take up to about one minute without downloading it.
-
-Guided Sample works on CPU. The supported interactive FLUX.2 path requires
-CUDA; Apple Silicon MPS remains experimental for the legacy SDXL backend only.
-Live CPU generation is disabled. Use **Stop** instead of refreshing while a
-download or generation is active. Studio reconnects the same browser session to
-work that is still running, and exposes a recovery layer when the temporary
-server itself has ended.
-
-For Korean briefs, Studio preserves the exact source text, protects recognized
-visual-design terms with a deterministic glossary, and then prepares separate
-model-facing English with the pinned helper. The original, prepared English,
-helper ID, and immutable revision are recorded as prompt provenance; this
-normalization improves terminology consistency but is not a promise that every
-Korean phrase will translate perfectly.
-
-PyPI renders this README from the metadata embedded in each immutable release
-artifact. Publishing the tagged `v0.3.0` GitHub Release builds and publishes
-that artifact automatically; editing `main`, this README, or an existing
-GitHub Release does not rewrite an already-published PyPI page.
-
-## Studio
-
-The packaged Gradio Studio is the fastest way to understand the workflow. This
-is the actual English Simple view with the bundled v0.3 Guided Sample open:
-
-<p align="center">
-  <a href="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/v0.3.0/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg">
-    <img src="https://raw.githubusercontent.com/hyeonsangjeon/AIsketcher/v0.3.0/docs/assets/aisketcher-studio-heritage-fixed-seed-en.jpg" width="1200" alt="AIsketcher Studio English Simple view showing a privacy-reviewed family sketch, its selected result, four deterministic directions, and manifest-backed settings">
-  </a>
-</p>
-<p align="center"><sub>Actual local Studio · HPO-selected historical seed 6764547109648557242 · pinned legacy sdxl-canny-lite@1 provenance · select the image to open it full size</sub></p>
-
-The bundled, privacy-reviewed HPO hero fixture supplies the visible prompt,
-profile, structure controls, and fixed selected seed
-`6764547109648557242`. Twelve new candidates were reviewed in four bounded
-rounds before this direction was selected. It opens without model weights,
-network access, or an image upload. Pocket Kingdom remains a separate
-documentation-only canonical lineage example.
-
-- **Simple** asks for a sketch, a one-sentence brief, a work type, a
-  Loose/Balanced/Faithful structure choice, and an explained model choice.
-  **Auto** is the recommended FLUX.2 default.
-- **Advanced** exposes model, Canny, generation, seed, variation, export, and
-  replay controls without discarding the Simple session.
-
-Launch it after installing the `demo` extra:
-
-```bash
-aisketcher init  # First run only; omit when settings already exist.
+aisketcher init
 aisketcher studio
 ```
 
-Start with Guided Sample when no model is installed. It is read-only: selecting
-**Refine this direction** opens a model-preparation layer instead of an error,
-while **Keep exploring the sample** closes the layer without changing the
-fixture. See the
-[Studio guide](https://hyeonsangjeon.github.io/AIsketcher/studio/simple-advanced/)
-and [configuration reference](https://hyeonsangjeon.github.io/AIsketcher/reference/configuration/)
-for Advanced controls, local-only defaults, versioned YAML, and project
-overrides.
+Model downloads begin only after you choose a concrete model and review its
+size, immutable revisions, cache destination, and licenses. The packaged CLI
+checks device support, minimum VRAM, and free cache space before a multi-GB
+transfer. Unsupported CPU/MPS combinations fail before downloading. English
+setup no longer pulls the separate 1.9 GB Korean→English helper; Korean Studio
+prepares that pinned helper only for the Korean workflow.
+
+Guided Study and `aisketcher try` work on CPU. Live FLUX.2 generation requires
+CUDA; Apple Silicon MPS remains experimental for the legacy SDXL path. Use
+**Stop** rather than refreshing during generation or model preparation.
+
+Simple mode starts with **Quick preview · 1** so a new user can validate one
+real result before paying for a four- or eight-seed search. Generation time
+grows roughly with the number of requested outputs.
 
 ## Python workflow
 
 ```python
-from aisketcher import FakeBackend, Intent, PresetManager, SeedPlan, Studio
+from aisketcher import Intent, PresetManager, SeedPlan, Studio
 
 preset = "flux2-klein-edit@1"
 models = PresetManager()
 plan = models.plan_install(preset)
-print(plan.license_notice, plan.estimated_bytes, plan.download_bytes, plan.items)
+print(plan.download_bytes, plan.items, plan.license_notice)
 
-# Run this only after reviewing the repositories, revisions, size, and licenses.
+# Continue only after reviewing the immutable repositories and licenses.
 if not plan.installed:
     models.install(preset, confirm=True)
 
@@ -186,79 +143,67 @@ study = studio.explore(
     seed_plan=SeedPlan.scout(4),
 )
 
-choice = study.pick(1)  # Stable zero-based index: the second candidate.
-variants = studio.vary(
-    choice,
+selected = study.pick(1)
+variations = studio.vary(
+    selected,
     outputs=4,
     strength="subtle",
     locks=("structure",),
 )
 
-variants.export("pocket-kingdom-run")
-report = studio.replay(
-    "pocket-kingdom-run/manifest.json",
-    mode="strict",
-)
+variations.export("design-study")
+report = studio.replay("design-study/manifest.json", mode="strict")
 ```
 
-FLUX.2 Klein has no native numeric denoise-strength argument. AIsketcher maps
-`subtle`, `balanced`, and `bold` to versioned, deterministic edit instructions
-and records that approximation in candidate metadata; structure locks are
-included explicitly. Legacy SDXL backends continue to use their native
-image-to-image strength path.
+For network- and model-free API tests, use
+`Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. The fake backend is a
+deterministic test double, not a claim about creative quality.
 
-For a network- and model-free workflow test, use
-`Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. Its images are deterministic
-fixtures for code and CI, not model-generated creative results.
-
-The exported manifest contains the resolved recipe and actual seeds. Built-in
-exports re-encode images without EXIF, omit source filenames, and allowlist
-backend metadata. Do not put secrets or private paths in prompts, profiles, or
-custom backend identifiers. See the
+The high-level workflow stays the same for a custom backend. Implement
+`name`, `capabilities`, and `generate(request)`, then pass the object to
+`Studio(your_backend, preset=...)`. Read the
 [complete SDK workflow](https://hyeonsangjeon.github.io/AIsketcher/sdk/workflow/)
-and [privacy model](https://hyeonsangjeon.github.io/AIsketcher/guides/privacy/).
+and [export/replay contract](https://hyeonsangjeon.github.io/AIsketcher/sdk/export-replay/).
 
-## Canonical example
+## Seeds are evidence, not a style preset
 
-Pocket Kingdom is the canonical `source → control → scout four → pick → vary
-four → final → export` example. Its anonymized source, exact prepared input,
-Canny control, four real local SDXL directions, four structure-locked
-variations, human selections, seeds, lineage, technical scores, and hashes are
-checked in with replayable manifests. The manual presents the final result
-alongside every alternative instead of substituting private reference art.
+A seed is meaningful only with the same model revision, resolved recipe,
+prompt, input, and runtime. AIsketcher therefore recommends observable
+properties such as structure similarity, edge cleanliness, and diversity; it
+does not claim that one seed is universally beautiful. Human selection remains
+part of the manifest.
 
-Artwork is **not** licensed under MIT. Read the
-[artwork notice][artwork-license]
-before using any image from this repository.
+## Korean prompts
 
-## Compatibility
-
-Version 0.3.0 completes the announced removal of the uppercase
-`AIsketcher.img2img` facade and `aisketcher.modelPipe`. Use the lowercase
-`aisketcher` package and the `prepare → explore → pick → vary → export → replay`
-workflow. Cloud translation and credential arguments remain removed; Korean
-prompt preparation now uses the explicit, pinned local helper described above.
+Studio preserves the exact Korean brief and prepares separate model-facing
+English with a pinned local helper. The original, translated text, helper ID,
+immutable revision, and refinement history are recorded as prompt provenance.
+This improves consistency but is not a promise that every Korean phrase will
+translate perfectly.
 
 ## Development
 
 ```bash
-python -m pip install -e ".[dev,docs]"
-python -m pytest tests/core tests/docs
-python -m pytest tests/app tests/test_config.py tests/test_cli.py
+python -m pip install -e ".[dev,docs,demo]"
+python -m pytest
+python -m ruff check src examples tests
+python -m mypy src/aisketcher
 mkdocs build --strict
 python -m build
 python -m twine check dist/*
 ```
 
-Network and GPU tests are opt-in. Normal CI uses a deterministic fake backend
-and never downloads model weights.
+Normal CI and the browser suite are model-free and never download weights.
+Actual model promotion requires the separate benchmark gate documented above.
+Merging reviewed documentation to `main` automatically refreshes GitHub Pages;
+publishing a versioned GitHub Release publishes the same immutable README to
+PyPI through Trusted Publishing.
 
 ## License
 
 Source code and documentation text are licensed under the
-[MIT License][mit-license].
-Images, drawings, generated derivatives, and other artwork are excluded; see
-the [artwork notice][artwork-license].
+[MIT License][mit-license]. Images, drawings, generated derivatives, and other
+artwork are excluded; read the [artwork notice][artwork-license] before reuse.
 
-[mit-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/v0.3.0/LICENSE
-[artwork-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/v0.3.0/ARTWORK_LICENSE.md
+[mit-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/main/LICENSE
+[artwork-license]: https://github.com/hyeonsangjeon/AIsketcher/blob/main/ARTWORK_LICENSE.md

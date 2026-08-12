@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://hyeonsangjeon.github.io/AIsketcher/
+    about: Check the quick start, model guide, and troubleshooting pages first.
+  - name: Questions and ideas
+    url: https://github.com/hyeonsangjeon/AIsketcher/discussions
+    about: Ask for help or discuss a backend, workflow, or design-study idea.

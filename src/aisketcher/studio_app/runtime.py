@@ -32,6 +32,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
 
 from ..manifest import canonical_sha256
+from ..model_registry import get_model_profile
 from ..prompt_normalization import (
     KoreanEnglishTranslator,
     M2M100KoreanEnglishTranslator,
@@ -91,6 +92,40 @@ class StudioAppError(RuntimeError):
 
 class StudioJobCancelled(StudioAppError):
     """A queued or active Studio operation was stopped by its owning session."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocalHardware:
+    """Minimal accelerator facts used before any multi-GB model transfer."""
+
+    cuda_available: bool = False
+    cuda_vram_bytes: int | None = None
+    mps_available: bool = False
+
+
+def _probe_local_hardware() -> LocalHardware:
+    """Inspect an already installed Torch runtime without importing Diffusers."""
+
+    try:
+        torch = importlib.import_module("torch")
+    except ImportError:
+        return LocalHardware()
+    cuda = getattr(torch, "cuda", None)
+    cuda_available = bool(cuda is not None and cuda.is_available())
+    cuda_vram_bytes: int | None = None
+    if cuda is not None and cuda_available:
+        try:
+            cuda_vram_bytes = int(cuda.get_device_properties(0).total_memory)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            cuda_vram_bytes = None
+    backends = getattr(torch, "backends", None)
+    mps = getattr(backends, "mps", None)
+    mps_available = bool(mps is not None and mps.is_available())
+    return LocalHardware(
+        cuda_available=cuda_available,
+        cuda_vram_bytes=cuda_vram_bytes,
+        mps_available=mps_available,
+    )
 
 
 class _CrossProcessFileLease:
@@ -1262,6 +1297,8 @@ class AppController:
         registry: RunRegistry | None = None,
         host_lease_path: str | Path | None = None,
         host_lease_timeout_seconds: float = DEFAULT_CROSS_PROCESS_LEASE_TIMEOUT_SECONDS,
+        generation_device: str | None = None,
+        hardware_probe: Callable[[], LocalHardware] | None = None,
     ) -> None:
         lease_timeout = float(host_lease_timeout_seconds)
         if not math.isfinite(lease_timeout) or lease_timeout <= 0:
@@ -1293,6 +1330,10 @@ class AppController:
         self._host_lease = _CrossProcessFileLease(lease_path)
         self._host_lease_timeout_seconds = lease_timeout
         self.guided = GuidedSampleCatalog(guided_root)
+        if generation_device not in {None, "auto", "cuda", "mps", "cpu"}:
+            raise ValueError("generation_device must be auto, cuda, mps, cpu, or None")
+        self.generation_device = generation_device
+        self._hardware_probe = hardware_probe or _probe_local_hardware
         self._operation_lock = threading.RLock()
         self._operation_tokens: dict[str, threading.Event] = {}
         self._operation_ids: dict[str, str] = {}
@@ -1338,6 +1379,108 @@ class AppController:
             return _call_supported(plan_install, preset, verify_cache=False)
         except Exception:  # noqa: BLE001 - optional installer compatibility boundary
             return None
+
+    def _assert_model_preflight(self, preset: str, installer: Any, language: str) -> None:
+        """Fail before download when the configured machine cannot run a preset.
+
+        Custom integrations that do not declare ``generation_device`` retain
+        the historical behavior.  The packaged CLI always supplies it.
+        """
+
+        device = self.generation_device
+        if device is None:
+            return
+        hardware = self._hardware_probe()
+        korean = normalize_language(language) == "ko"
+        resolved_device = (
+            "cuda"
+            if device == "auto" and hardware.cuda_available
+            else "mps"
+            if device == "auto" and hardware.mps_available
+            else "cpu"
+            if device == "auto"
+            else device
+        )
+
+        if resolved_device == "cpu":
+            raise StudioAppError(
+                "이 Studio는 CPU 실시간 생성을 지원하지 않습니다. 모델 없이 가이드 "
+                "샘플을 사용하거나 CUDA GPU 환경에서 다시 실행하세요."
+                if korean
+                else "This Studio does not support live CPU generation. Use the model-free "
+                "Guided Sample or run it on a CUDA GPU."
+            )
+
+        is_flux = preset.startswith(FLUX2_KLEIN_PRESET_PREFIX)
+        if is_flux and resolved_device == "mps":
+            raise StudioAppError(
+                "FLUX.2 Klein의 MPS 경로는 검증되지 않았으므로 16 GB 모델을 받지 "
+                "않았습니다. 모델 없는 가이드 샘플을 사용하거나 CUDA GPU를 선택하세요."
+                if korean
+                else "FLUX.2 Klein is not validated on MPS, so AIsketcher did not start the "
+                "16 GB download. Use the model-free Guided Sample or select a CUDA GPU."
+            )
+
+        if resolved_device == "mps" and not hardware.mps_available:
+            raise StudioAppError(
+                "사용 가능한 Apple Silicon MPS 장치를 찾지 못해 모델 다운로드를 시작하지 "
+                "않았습니다."
+                if korean
+                else "No usable Apple Silicon MPS device was found, so AIsketcher did not "
+                "start the model download."
+            )
+
+        needs_cuda = resolved_device == "cuda"
+        if needs_cuda and not hardware.cuda_available:
+            raise StudioAppError(
+                "사용 가능한 CUDA GPU를 찾지 못해 모델 다운로드를 시작하지 않았습니다. "
+                "모델 없는 가이드 샘플은 지금 바로 사용할 수 있습니다."
+                if korean
+                else "No usable CUDA GPU was found, so AIsketcher did not start the model "
+                "download. The model-free Guided Sample is available now."
+            )
+
+        profile_id = "flux2-klein-4b" if is_flux else "sdxl-canny-legacy"
+        minimum_vram_bytes = get_model_profile(profile_id).minimum_vram_gb * 1_000_000_000
+        if (
+            needs_cuda
+            and hardware.cuda_vram_bytes is not None
+            and hardware.cuda_vram_bytes < minimum_vram_bytes
+        ):
+            available = hardware.cuda_vram_bytes / 1_000_000_000
+            required = minimum_vram_bytes / 1_000_000_000
+            raise StudioAppError(
+                f"GPU 메모리가 약 {available:.1f} GB로, 이 모델의 검증 최소치 "
+                f"{required:.0f} GB보다 작습니다. 다운로드를 시작하지 않았습니다."
+                if korean
+                else f"This GPU has about {available:.1f} GB VRAM, below the model's "
+                f"{required:.0f} GB validated minimum. The download was not started."
+            )
+
+        plan_install = getattr(installer, "plan_install", None)
+        if not callable(plan_install):
+            return
+        try:
+            plan = _call_supported(plan_install, preset, verify_cache=False)
+            required_bytes = int(getattr(plan, "download_bytes", 0))
+            cache_dir = Path(plan.cache_dir)
+            probe = cache_dir
+            while not probe.exists() and probe != probe.parent:
+                probe = probe.parent
+            free_bytes = shutil.disk_usage(probe).free
+        except (AttributeError, OSError, TypeError, ValueError):
+            return
+        reserve_bytes = 2_000_000_000
+        if required_bytes and free_bytes < required_bytes + reserve_bytes:
+            required_gb = (required_bytes + reserve_bytes) / 1_000_000_000
+            free_gb = free_bytes / 1_000_000_000
+            raise StudioAppError(
+                f"모델 캐시에 약 {required_gb:.1f} GB가 필요하지만 사용 가능한 공간은 "
+                f"{free_gb:.1f} GB입니다. 다운로드를 시작하지 않았습니다."
+                if korean
+                else f"The model cache needs about {required_gb:.1f} GB including working "
+                f"space, but only {free_gb:.1f} GB is free. The download was not started."
+            )
 
     def begin_operation(self, state_value: Mapping[str, Any] | AppState | None) -> threading.Event:
         """Create or reuse the per-session cooperative cancellation token."""
@@ -2494,6 +2637,7 @@ class AppController:
                 else "다운로드 용량과 라이선스를 확인한 뒤 동의하세요."
             )
         installer = self._resolve_model_installer()
+        self._assert_model_preflight(preset, installer, language)
         install = installer if callable(installer) else getattr(installer, "install", None)
         if not callable(install):
             raise StudioAppError("The configured model installer is invalid.")
@@ -2523,7 +2667,10 @@ class AppController:
                 )
                 self._check_cancelled(operation_event)
                 prepare_translator = getattr(self.prompt_translator, "prepare", None)
-                if callable(prepare_translator):
+                # Do not add a 1.9 GB translation download to an English first
+                # run.  Korean Studio prepares it explicitly; other users only
+                # need the image model.
+                if normalize_language(language) == "ko" and callable(prepare_translator):
                     self._set_operation_target(state, self.prompt_translator)
                     _call_supported(
                         prepare_translator,
@@ -2558,6 +2705,7 @@ __all__ = [
     "CandidateView",
     "GuidedSample",
     "GuidedSampleCatalog",
+    "LocalHardware",
     "MAX_IMAGE_PIXELS",
     "MAX_MANIFEST_BYTES",
     "MAX_REPLAY_ARCHIVE_BYTES",

@@ -1,75 +1,85 @@
 # Quick start
 
-Version 0.3.0 is published on
-[PyPI](https://pypi.org/project/AIsketcher/0.3.0/). The commands below pin the
-public release so a later package update cannot silently change the setup.
-PyPI names are case-insensitive; install `aisketcher` in lowercase to match the
-Python import and command-line interface.
+PyPI names are case-insensitive, but the install identifier, Python import,
+and command are shown consistently as lowercase `aisketcher`.
 
-For the latest release:
+## 1. Open a real study with no model
 
 ```bash
-pip install aisketcher
+python -m pip install "aisketcher==0.4.0"
+aisketcher try
 ```
 
-Use one of the pinned profiles below when you need a reproducible environment.
+This is the shortest useful first run. It opens a bilingual local tour of the
+bundled, hash-verified study and requires no GPU, internet connection, Torch, Diffusers, or
+Gradio. Select each direction to inspect its seed and recorded evidence. Press
+`Ctrl+C` when finished.
 
-## Install the layer you need
+## 2. Choose the layer you need
 
 === "Core SDK"
 
     ```bash
-    python -m pip install "aisketcher==0.3.0"
+    python -m pip install "aisketcher==0.4.0"
     ```
 
-    This installs preparation, recipe, lineage, export, and replay types. It
-    does not install a generation runtime.
-
-=== "Local generation"
-
-    ```bash
-    python -m pip install "aisketcher[local]==0.3.0"
-    ```
-
-    Local presets download their pinned model files only after confirmation.
+    Preparation, studies, lineage, export, replay, and the zero-download tour.
 
 === "Studio"
 
     ```bash
-    python -m pip install "aisketcher[demo]==0.3.0"
+    python -m pip install "aisketcher[demo]==0.4.0"
     aisketcher init
     aisketcher studio
     ```
 
-    `init` writes a versioned per-user settings file and never downloads a
-    model. Guided Sample then works from its bundled, hash-verified fixture
-    without a network or GPU. Install `aisketcher[local,demo]` instead for live
-    local generation. New settings select the T4-validated FLUX.2 Klein Edit
-    preset; the weights are still downloaded only after a separate review and
-    confirmation.
+    Adds Gradio and the full local interface. The Guided Study still needs no
+    model.
 
-For the complete model-free first run:
+=== "Local generation"
 
-```bash
-python -m pip install "aisketcher[demo]==0.3.0" && aisketcher init && aisketcher studio
-```
+    ```bash
+    python -m pip install "aisketcher[local,demo]==0.4.0"
+    aisketcher init
+    aisketcher studio
+    ```
 
-`aisketcher init` protects an existing settings file. Use `--path` for a
-project-specific file or `--force` only after reviewing what will be replaced.
-See the [configuration reference](reference/configuration.md) for resolution
-order and every supported key.
+    Adds Torch, Diffusers, and the pinned local runtimes. Model files are not
+    bundled and are downloaded only after review and confirmation.
 
-## Run a study
+`aisketcher init` creates a versioned YAML settings ledger and protects an
+existing file. Use `--path` for a project file or `--force` only after reviewing
+what will be replaced. See [Configuration](reference/configuration.md).
+
+## 3. Choose a concrete model role
+
+- **Fast Edit · FLUX.2 Klein** is for photo restyling, flexible sketch
+  interpretation, and instruction edits. It is four-step and T4-validated, but
+  it is reference-image editing—not Canny—and cannot promise exact line locks.
+- **Structure Lock · SDXL Canny Lite** is the lower-memory legacy fallback when
+  preserving line/Canny structure matters more than modern edit quality.
+- **Structure Lock+ · SDXL Canny** uses the full legacy ControlNet.
+
+The former `Auto` label did not classify inputs: every route selected FLUX.2.
+Version 0.4 therefore exposes the concrete model instead. Modern structure and
+Pro candidates are tracked in [Choose a model](models/choosing-a-model.md) and
+must pass the documented benchmark before promotion.
+
+Before a model transfer, the packaged CLI checks the configured device,
+available CUDA VRAM, and free cache space. Unsupported CPU/MPS combinations
+stop before a multi-GB download. English setup downloads only the image model;
+Korean Studio also prepares its separately pinned Korean→English helper.
+
+## 4. Run a study in Python
 
 ```python
-from aisketcher import FakeBackend, Intent, PresetManager, SeedPlan, Studio
+from aisketcher import Intent, PresetManager, SeedPlan, Studio
 
 preset = "flux2-klein-edit@1"
 models = PresetManager()
 plan = models.plan_install(preset)
-print(plan.license_notice, plan.estimated_bytes, plan.download_bytes, plan.items)
+print(plan.download_bytes, plan.items, plan.license_notice)
 
-# Continue only after reviewing the plan and the upstream model licenses.
 if not plan.installed:
     models.install(preset, confirm=True)
 
@@ -87,7 +97,7 @@ study = studio.explore(
     seed_plan=SeedPlan.scout(4),
 )
 
-selected = study.pick(1)  # Stable zero-based index: the second candidate.
+selected = study.pick(1)
 variations = studio.vary(
     selected,
     outputs=4,
@@ -97,96 +107,25 @@ variations = studio.vary(
 variations.export("design-study")
 ```
 
-To test the API and lineage without downloading a model, construct
-`Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. The fake backend is for
-deterministic tests and Guided Sample plumbing; it does not represent a creative
-model result. Its explicit SDXL preset name keeps this test fixture separate
-from the default live FLUX.2 path.
+For a network- and model-free API test, use
+`Studio(FakeBackend(), preset="sdxl-canny-lite@1")`. The fake backend is a
+deterministic test double, not a creative model result.
 
-`study.pick(1)` uses the candidate’s stable index, not its visual rank. Inspect
-the candidate ID and actual seed in the exported manifest before handing the
-study off.
+## First-run behavior
 
-## Choose a first mode
-
-- Start with **Guided Sample** to learn the flow with no model download once the
-  canonical fixture status reports Ready.
-- Use **FLUX.2 Klein Edit** for new sketch rendering, photo restyling, and
-  instruction edits. It is the recommended/default live preset and was
-  validated on a 16 GB NVIDIA T4.
-- Use **SDXL Canny Lite** or **SDXL Canny Quality** only when an existing
-  manifest or an explicit edge-conditioned workflow requires the legacy
-  ControlNet path.
-
-The default FLUX.2 profile requires CUDA for the supported interactive path.
-CPU execution is not enabled by the packaged Studio. Apple Silicon MPS remains
-experimental for the legacy SDXL path and is not the validated FLUX.2 default.
-
-!!! info "Guided fixture"
-
-    The canonical bundle contains its anonymous source, exact prepared input,
-    Canny control, four real local SDXL directions, selected result, and a
-    hash-verified study manifest. Guided Sample opens that fixture read-only and
-    requires no model download. Its SDXL provenance is intentionally preserved;
-    it does not redefine the model used for a new live study.
-
-## What the first Studio run does
-
-An uncached model selection opens a preparation step before network access.
-Review the pinned repositories and revisions, expected transfer, cache
-destination, device guidance, and upstream licenses, then select
-**Review & prepare model**. That explicit confirmation prepares both the
-selected image model and the pinned MIT-licensed `facebook/m2m100_418M`
-Korean→English helper when either is missing. The helper is pinned to revision
-`55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636` and adds about 1.9 GB when it is
-not cached. It also streams every cached image-model runtime file through its
-reviewed size and SHA-256 policy once per Studio process before allowing a
-backend load.
-On the validated T4, checking the roughly 16.2 GB FLUX cache can take up to
-about one minute with no network transfer; the process then reuses that
-verification receipt. Returning to the sample or leaving setup before pressing
-the button starts no download or integrity pass.
-
-**Stop** cancels generation cooperatively. Image-model preparation checks it at
-streamed hash chunks and curated selected-file boundaries; a provider transfer
-already in progress may finish before the next boundary. A stopped read-only
-cache check leaves existing files for retry, while a failed fresh download
-removes only its incomplete managed destination. Korean-helper setup checks
-Stop at each of its seven runtime-file boundaries, during hashing, and between
-tokenizer and model loading. It reuses files for its pinned revision; it does
-not use the image-model marker-and-cleanup format.
-If the page reconnects to the same live browser session, Studio restores the
-running or stopping job and its Stop control; refreshing by itself never
-cancels GPU work. If the temporary server has ended, the recovery layer tells
-you to reload only the latest Studio address.
-
-Generation shows elapsed time and a separate estimate. For example,
-`42.3 / 107.6 s` means 42.3 seconds have elapsed against a 107.6-second
-estimate; it is not a timeout.
-
-Studio keeps the user’s original creative brief distinct from the prompt sent
-to the image model. English needs no translation; the FLUX.2 path can still add
-its deterministic reference-edit constraints. Korean is translated with the
-pinned local M2M100 Korean-to-English adapter only after that helper has been
-explicitly prepared. Recognized visual-design terms are protected with a
-deterministic glossary before translation. The exact original, prepared
-English, helper ID, and immutable revision are recorded as prompt provenance.
-If the helper is unavailable, Studio stops before model/GPU work and preserves
-the Korean original instead of silently sending unsupported text.
-
-The result area shows four large direction cards without an inner scrollbar.
-Refining a live result opens an additional-instruction field. Refining the
-read-only Guided Sample opens a model-preparation layer rather than an error;
-**Keep exploring the sample** closes it without changing the selected fixture.
-
-The packaged Gradio app binds to `127.0.0.1` and is intended for one local user.
-Browser sessions have isolated run state, while GPU work is serialized across
-the process. It is not a ready-made multi-user or public deployment.
+- Guided Study and `aisketcher try` do not download or generate anything.
+- Preparing a live model shows repositories, immutable revisions, transfer
+  size, cache destination, and licenses first.
+- A new process may need to verify cached model hashes before loading them.
+- **Stop** cancels queued work immediately and running work at the next safe
+  backend or file boundary. Refreshing the browser does not cancel GPU work.
+- `42.3 / 107.6 s` means elapsed time versus an estimate, not a timeout.
+- The packaged Studio binds to `127.0.0.1` and is a local single-user tool, not
+  a public multi-user service.
 
 ## Next
 
-- Understand the [design-lineage model](concepts/design-lineage.md).
-- Read each stage in the [complete SDK workflow](sdk/workflow.md).
-- Learn what [strict and compatible replay](sdk/export-replay.md) guarantee.
-- Check [configuration](reference/configuration.md) and
-  [troubleshooting](guides/troubleshooting.md) before a live model install.
+- Learn the [design-lineage model](concepts/design-lineage.md).
+- Read the [complete SDK workflow](sdk/workflow.md).
+- Understand [strict and compatible replay](sdk/export-replay.md).
+- Check [troubleshooting](guides/troubleshooting.md) before a live model setup.

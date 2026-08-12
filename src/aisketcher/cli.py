@@ -1,4 +1,4 @@
-"""Command-line entry points for first-run setup and the packaged Studio."""
+"""Command-line entry points for setup, the zero-download tour, and Studio."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     init.add_argument("--device", default="auto", choices=("auto", "cuda", "mps", "cpu"))
-    init.add_argument("--outputs", type=int, default=4, choices=(1, 4, 8))
+    init.add_argument("--outputs", type=int, default=1, choices=(1, 4, 8))
     init.add_argument(
         "--seed-mode", default="scout", choices=("scout", "locked", "explicit")
     )
@@ -57,6 +57,22 @@ def _parser() -> argparse.ArgumentParser:
     studio.add_argument("--language", choices=("en", "ko"), help="override the UI language")
     studio.add_argument("--port", type=int, help="bind a specific localhost port")
     studio.set_defaults(handler=_run_studio)
+
+    tour = commands.add_parser(
+        "try",
+        help="open the bundled Guided Sample without Gradio, Torch, or model downloads",
+    )
+    tour.add_argument(
+        "--port",
+        type=int,
+        help="bind a specific localhost port instead of choosing an available port",
+    )
+    tour.add_argument(
+        "--no-open",
+        action="store_true",
+        help="print the local URL without opening a browser",
+    )
+    tour.set_defaults(handler=_run_try)
     return parser
 
 
@@ -86,6 +102,12 @@ def _run_studio(args: argparse.Namespace) -> int:
     return _launch_studio(config, port=args.port)
 
 
+def _run_try(args: argparse.Namespace) -> int:
+    from .tour import launch_tour
+
+    return launch_tour(port=args.port, open_browser=not args.no_open)
+
+
 def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     if port is not None and not 1 <= port <= 65535:
         raise ValueError("port must be between 1 and 65535")
@@ -111,6 +133,7 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
     controller = AppController(
         studio_factory=studio_factory,
         model_installer=manager,
+        generation_device=config.device,
         prompt_translator=M2M100KoreanEnglishTranslator(
             cache_dir=str(manager.cache_dir / "translation"),
         ),
@@ -119,12 +142,10 @@ def _launch_studio(config: AIsketcherConfig, *, port: int | None = None) -> int:
         controller,
         language=config.language,
         default_preset=config.preset,
-        # The concrete 2026 default is also the implementation behind Auto.
-        # Keep the first-run Simple surface friendly while still honoring an
-        # explicitly configured legacy preset.
-        default_simple_model=(
-            "auto" if config.preset == "flux2-klein-edit@1" else config.preset
-        ),
+        # Show the concrete model in Simple mode.  The old ``auto`` label only
+        # routed every input to FLUX.2 Klein, which implied hardware/input
+        # routing that did not actually exist.
+        default_simple_model=config.preset,
         default_output_count=config.output_count,
         default_seed_mode=str(config.seed_mode),
         default_seed=config.seed,

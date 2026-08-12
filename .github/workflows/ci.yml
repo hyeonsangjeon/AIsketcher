@@ -34,8 +34,8 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install core development dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
-      - name: Run core, CLI, config, and documentation policy tests
-        run: python -m pytest tests/core tests/docs tests/test_cli.py tests/test_config.py
+      - name: Run core, CLI, config, tour, and documentation policy tests
+        run: python -m pytest tests/core tests/docs tests/test_cli.py tests/test_config.py tests/test_tour.py
 
   quality:
     name: Static quality

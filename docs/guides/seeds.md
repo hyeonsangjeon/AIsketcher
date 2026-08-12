@@ -21,11 +21,11 @@ seeded.
 | Count | Use it when | Trade-off |
 | ---: | --- | --- |
 | 1 | checking a recipe or device | fastest, no meaningful comparison |
-| 4 | normal scouting and variation | default balance of breadth and cost |
+| 4 | normal scouting and variation | useful balance of breadth and cost |
 | 8 | a direction is still ambiguous | broader but slower and harder to review |
 
-The Simple view always uses four. Advanced exposes 1, 4, and 8 so the contact
-sheet and review flow remain predictable.
+The Simple view exposes 1, 4, and 8 and defaults to one quick proof. Advanced
+exposes the same counts so the contact sheet and review flow remain predictable.
 
 ## A useful designer loop
 

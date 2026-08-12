@@ -29,6 +29,8 @@ REQUIRED_PAGES = {
     "guides/troubleshooting.md",
     "reference/configuration.md",
     "changelog.md",
+    "models/choosing-a-model.md",
+    "releases/0.4.0.md",
     "releases/0.2.0.md",
     "releases/0.2.1.md",
     "releases/0.3.0.md",

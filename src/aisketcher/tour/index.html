@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>AIsketcher · Guided Tour</title>
+  <style>
+    :root {
+      --ink: #0b1932;
+      --muted: #61708a;
+      --line: #dbe2ee;
+      --soft-line: #e9edf4;
+      --paper: #ffffff;
+      --wash: #f4f7fb;
+      --blue: #1761f2;
+      --blue-dark: #0b3fb3;
+      --coral: #ff5d57;
+      --gold: #f4b53e;
+      --navy: #071932;
+      --radius: 18px;
+      --shadow: 0 22px 70px rgba(11, 25, 50, 0.13);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--wash);
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+
+    button:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid rgba(23, 97, 242, 0.3);
+      outline-offset: 3px;
+    }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 68px;
+      padding: 0 32px;
+      border-bottom: 1px solid rgba(219, 226, 238, 0.88);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+    }
+
+    .brand-mark {
+      position: relative;
+      display: inline-grid;
+      width: 27px;
+      height: 27px;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 8px;
+      background: var(--blue);
+      color: white;
+      font-size: 14px;
+      font-weight: 900;
+      transform: rotate(-4deg);
+    }
+
+    .brand-mark::after {
+      position: absolute;
+      right: -8px;
+      bottom: -8px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--coral);
+      content: "";
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .privacy-note {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .privacy-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1eab72;
+      box-shadow: 0 0 0 4px rgba(30, 171, 114, 0.12);
+    }
+
+    .language-switch {
+      display: flex;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--wash);
+    }
+
+    .language-switch button {
+      min-width: 40px;
+      padding: 5px 8px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .language-switch button[aria-pressed="true"] {
+      background: var(--paper);
+      color: var(--blue);
+      box-shadow: 0 2px 8px rgba(11, 25, 50, 0.08);
+    }
+
+    main {
+      width: min(1480px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 44px 0 64px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.72fr);
+      gap: 36px;
+      align-items: end;
+      margin: 0 0 34px;
+    }
+
+    .intro h1 {
+      max-width: 920px;
+      margin: 0;
+      font-size: clamp(40px, 5.2vw, 76px);
+      line-height: 0.98;
+      letter-spacing: -0.065em;
+    }
+
+    .accent { color: var(--blue); }
+
+    .intro-copy {
+      max-width: 520px;
+      padding: 0 0 5px;
+    }
+
+    .intro-copy p {
+      margin: 0 0 17px;
+      color: #40506a;
+      font-size: 17px;
+      line-height: 1.55;
+    }
+
+    .no-runtime {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .no-runtime svg { color: var(--blue); }
+
+    .workspace {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .workspace-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .workspace-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 780;
+    }
+
+    .workspace-title small {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .stage-count {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: minmax(290px, 0.66fr) minmax(520px, 1.34fr);
+      min-height: 560px;
+    }
+
+    .source-panel {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: #f8f9fc;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 56px;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--soft-line);
+    }
+
+    .panel-head h2,
+    .panel-head h3 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: -0.015em;
+    }
+
+    .step {
+      display: inline-grid;
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--ink);
+      color: white;
+      font-size: 11px;
+    }
+
+    .source-toggle {
+      display: flex;
+      gap: 4px;
+    }
+
+    .source-toggle button {
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .source-toggle button[aria-pressed="true"] {
+      background: white;
+      color: var(--blue);
+      box-shadow: 0 1px 7px rgba(11, 25, 50, 0.1);
+    }
+
+    .source-figure {
+      display: grid;
+      min-height: 372px;
+      margin: 0;
+      padding: 20px;
+      place-items: center;
+    }
+
+    .source-figure img {
+      display: block;
+      width: 100%;
+      max-height: 370px;
+      object-fit: contain;
+      border-radius: 12px;
+      background: white;
+    }
+
+    .brief {
+      margin-top: auto;
+      padding: 22px 24px 24px;
+      border-top: 1px solid var(--soft-line);
+      background: white;
+    }
+
+    .brief-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .brief p {
+      margin: 0;
+      color: #35445c;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .result-panel {
+      display: grid;
+      min-width: 0;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .result-figure {
+      position: relative;
+      display: grid;
+      min-height: 430px;
+      margin: 0;
+      padding: 24px;
+      place-items: center;
+      background:
+        linear-gradient(90deg, rgba(7, 25, 50, 0.035) 1px, transparent 1px),
+        linear-gradient(rgba(7, 25, 50, 0.035) 1px, transparent 1px),
+        white;
+      background-size: 26px 26px;
+    }
+
+    .result-figure img {
+      display: block;
+      width: min(100%, 850px);
+      max-height: 450px;
+      object-fit: contain;
+      border-radius: 14px;
+      box-shadow: 0 15px 42px rgba(7, 25, 50, 0.18);
+      transition: opacity 150ms ease, transform 180ms ease;
+    }
+
+    .result-figure.is-changing img {
+      opacity: 0.4;
+      transform: scale(0.992);
+    }
+
+    .expand-button {
+      position: absolute;
+      right: 20px;
+      bottom: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 10px;
+      background: rgba(7, 25, 50, 0.86);
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 720;
+      backdrop-filter: blur(10px);
+    }
+
+    .selection-meta {
+      display: grid;
+      grid-template-columns: minmax(210px, 1fr) repeat(3, minmax(108px, 0.46fr));
+      border-top: 1px solid var(--soft-line);
+      background: var(--navy);
+      color: white;
+    }
+
+    .selection-meta > div {
+      min-width: 0;
+      padding: 15px 18px;
+      border-right: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .selection-meta > div:last-child { border-right: 0; }
+
+    .meta-label {
+      display: block;
+      margin-bottom: 3px;
+      color: #9eacc1;
+      font-size: 10px;
+      font-weight: 760;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .meta-value {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #selected-seed { font-size: 11px; }
+
+    .directions {
+      padding: 28px 28px 30px;
+      border-top: 1px solid var(--line);
+    }
+
+    .directions-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 18px;
+    }
+
+    .directions-head h2 {
+      margin: 0 0 3px;
+      font-size: 20px;
+      letter-spacing: -0.035em;
+    }
+
+    .directions-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .direction-tip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #56657c;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .direction-tip span:first-child {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      border-radius: 50%;
+      background: #fff5de;
+      color: #9a6200;
+      font-weight: 800;
+    }
+
+    .candidate-rail {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .candidate {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      padding: 0;
+      border: 2px solid transparent;
+      border-radius: 14px;
+      background: #f0f3f8;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    }
+
+    .candidate:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 24px rgba(11, 25, 50, 0.12);
+    }
+
+    .candidate[aria-pressed="true"] {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(23, 97, 242, 0.12);
+    }
+
+    .candidate img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      background: #e9edf4;
+    }
+
+    .candidate-caption {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 11px;
+      background: white;
+    }
+
+    .candidate-name {
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 730;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .candidate-seed {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 9px;
+    }
+
+    .winner-flag {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: var(--blue);
+      color: white;
+      font-size: 9px;
+      font-weight: 820;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      box-shadow: 0 5px 15px rgba(11, 63, 179, 0.32);
+    }
+
+    .handoff {
+      display: grid;
+      grid-template-columns: minmax(0, 0.88fr) minmax(520px, 1.12fr);
+      gap: 0;
+      margin-top: 38px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--paper);
+    }
+
+    .handoff-story {
+      padding: 36px;
+      background: var(--navy);
+      color: white;
+    }
+
+    .handoff-story h2 {
+      max-width: 480px;
+      margin: 0 0 13px;
+      font-size: clamp(28px, 3vw, 44px);
+      line-height: 1.08;
+      letter-spacing: -0.05em;
+    }
+
+    .handoff-story > p {
+      max-width: 520px;
+      margin: 0 0 30px;
+      color: #b8c5d6;
+      font-size: 15px;
+    }
+
+    .seed-callout {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 18px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .seed-icon {
+      display: grid;
+      flex: 0 0 auto;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--coral);
+      font-weight: 900;
+    }
+
+    .seed-callout strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 13px;
+    }
+
+    .seed-callout p {
+      margin: 0;
+      color: #aebbd0;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .manifest-panel { padding: 30px 32px; }
+
+    .manifest-panel h3 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      letter-spacing: -0.025em;
+    }
+
+    .manifest-panel > p {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .ledger {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .ledger div {
+      min-width: 0;
+      padding: 13px 12px 13px 0;
+      border-bottom: 1px solid var(--soft-line);
+    }
+
+    .ledger div:nth-child(even) { padding-left: 12px; }
+
+    .ledger dt {
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .ledger dd {
+      overflow: hidden;
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    details {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8f9fc;
+    }
+
+    summary {
+      padding: 11px 13px;
+      cursor: pointer;
+      color: #3c4d65;
+      font-size: 12px;
+      font-weight: 740;
+    }
+
+    pre {
+      max-height: 320px;
+      overflow: auto;
+      margin: 0;
+      padding: 14px;
+      border-top: 1px solid var(--line);
+      color: #314158;
+      font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .local-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 24px 4px 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    dialog {
+      width: min(1120px, calc(100vw - 40px));
+      max-height: calc(100vh - 40px);
+      padding: 0;
+      overflow: hidden;
+      border: 0;
+      border-radius: 20px;
+      background: var(--navy);
+      color: white;
+      box-shadow: 0 30px 100px rgba(0, 0, 0, 0.45);
+    }
+
+    dialog::backdrop {
+      background: rgba(3, 10, 23, 0.78);
+      backdrop-filter: blur(7px);
+    }
+
+    .dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .dialog-head strong { font-size: 13px; }
+
+    .dialog-head button {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .dialog-image {
+      display: grid;
+      max-height: calc(100vh - 150px);
+      padding: 20px;
+      place-items: center;
+    }
+
+    .dialog-image img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 190px);
+      object-fit: contain;
+      border-radius: 10px;
+    }
+
+    .dialog-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      color: #b9c5d7;
+      font-size: 11px;
+    }
+
+    .error-state {
+      display: none;
+      padding: 18px;
+      border: 1px solid #ffd2d0;
+      border-radius: 12px;
+      background: #fff1f0;
+      color: #8d2823;
+    }
+
+    @media (max-width: 1040px) {
+      .intro { grid-template-columns: 1fr; gap: 18px; }
+      .intro-copy { max-width: 780px; }
+      .compare { grid-template-columns: 1fr; }
+      .source-panel { border-right: 0; border-bottom: 1px solid var(--line); }
+      .source-figure { min-height: 300px; }
+      .brief { margin-top: 0; }
+      .selection-meta { grid-template-columns: 1fr 1fr; }
+      .selection-meta > div:nth-child(2) { border-right: 0; }
+      .selection-meta > div:nth-child(-n + 2) { border-bottom: 1px solid rgba(255,255,255,.12); }
+      .handoff { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 760px) {
+      .topbar { padding: 0 16px; }
+      .privacy-note { display: none; }
+      main { width: min(100% - 24px, 1480px); padding-top: 30px; }
+      .intro h1 { font-size: clamp(40px, 13vw, 62px); }
+      .workspace { border-radius: 17px; }
+      .workspace-title small, .stage-count { display: none; }
+      .result-figure { min-height: 330px; padding: 14px; }
+      .source-figure { min-height: 250px; padding: 14px; }
+      .candidate-rail {
+        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        overflow-x: auto;
+        padding: 4px 4px 16px;
+        scroll-snap-type: x mandatory;
+      }
+      .candidate { scroll-snap-align: start; }
+      .directions { padding: 24px 16px; }
+      .directions-head { align-items: start; flex-direction: column; gap: 10px; }
+      .direction-tip { white-space: normal; }
+      .handoff-story, .manifest-panel { padding: 28px 22px; }
+      .ledger { grid-template-columns: 1fr; }
+      .ledger div:nth-child(even) { padding-left: 0; }
+      .local-footer { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">A</span>AIsketcher</div>
+    <div class="header-actions">
+      <div class="privacy-note">
+        <span class="privacy-dot" aria-hidden="true"></span>
+        <span data-en="Running locally · nothing is uploaded" data-ko="로컬 실행 중 · 어떤 것도 업로드되지 않음">Running locally · nothing is uploaded</span>
+      </div>
+      <div class="language-switch" aria-label="Language">
+        <button type="button" data-language="en" aria-pressed="true">EN</button>
+        <button type="button" data-language="ko" aria-pressed="false">한국어</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="tour-title">
+      <h1 id="tour-title">
+        <span data-en="One sketch." data-ko="하나의 스케치.">One sketch.</span><br>
+        <span class="accent" data-en="Four directions." data-ko="네 가지 방향.">Four directions.</span><br>
+        <span data-en="One replayable decision." data-ko="재현 가능한 하나의 결정.">One replayable decision.</span>
+      </h1>
+      <div class="intro-copy">
+        <p data-en="This is a real AIsketcher study bundled inside the package. Choose a direction, inspect its seed, and see the manifest that keeps the creative handoff reproducible."
+           data-ko="패키지 안에 번들된 실제 AIsketcher 스터디입니다. 방향을 고르고 시드를 확인한 뒤, 창작 과정을 재현 가능하게 만드는 manifest를 살펴보세요.">
+          This is a real AIsketcher study bundled inside the package. Choose a direction, inspect its seed, and see the manifest that keeps the creative handoff reproducible.
+        </p>
+        <span class="no-runtime">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 12.5l3.1 3.1L17.5 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/></svg>
+          <span data-en="No Gradio. No Torch. No model download." data-ko="Gradio·Torch·모델 다운로드 없이 바로 체험합니다.">No Gradio. No Torch. No model download.</span>
+        </span>
+      </div>
+    </section>
+
+    <p id="load-error" class="error-state" role="alert" data-en="The bundled manifest could not be loaded. Reinstall the package and try again." data-ko="번들 manifest를 불러오지 못했습니다. 패키지를 다시 설치한 뒤 재시도하세요.">
+      The bundled manifest could not be loaded. Reinstall the package and try again.
+    </p>
+
+    <section class="workspace" aria-label="Guided sample explorer">
+      <div class="workspace-bar">
+        <div class="workspace-title">
+          <span data-en="Pocket Kingdom study" data-ko="포켓 킹덤 스터디">Pocket Kingdom study</span>
+          <small data-en="bundled guided sample" data-ko="번들 가이드 샘플">bundled guided sample</small>
+        </div>
+        <span class="stage-count" data-en="Explore → select → hand off" data-ko="탐색 → 선택 → 인계">Explore → select → hand off</span>
+      </div>
+
+      <div class="compare">
+        <section class="source-panel" aria-labelledby="source-title">
+          <div class="panel-head">
+            <h2 id="source-title"><span class="step">1</span><span data-en="Source" data-ko="입력">Source</span></h2>
+            <div class="source-toggle">
+              <button type="button" id="show-source" aria-pressed="true" data-en="Sketch" data-ko="스케치">Sketch</button>
+              <button type="button" id="show-control" aria-pressed="false" data-en="Edge map" data-ko="에지 맵">Edge map</button>
+            </div>
+          </div>
+          <figure class="source-figure">
+            <img id="source-image" src="/sample/prepared/source.png" alt="Original hand-drawn Pocket Kingdom sketch">
+          </figure>
+          <div class="brief">
+            <span class="brief-label" data-en="Creative brief" data-ko="크리에이티브 브리프">Creative brief</span>
+            <p id="prompt">Loading the prompt from the manifest…</p>
+          </div>
+        </section>
+
+        <section class="result-panel" aria-labelledby="result-title">
+          <div class="panel-head">
+            <h2 id="result-title"><span class="step">2</span><span data-en="Selected direction" data-ko="선택한 방향">Selected direction</span></h2>
+            <span id="selected-badges" class="stage-count"></span>
+          </div>
+          <figure class="result-figure" id="result-figure">
+            <img id="selected-image" src="/sample/scout/scout-01.png" alt="Selected generated design direction">
+            <button type="button" class="expand-button" id="expand-result">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-en="View large" data-ko="크게 보기">View large</span>
+            </button>
+          </figure>
+          <div class="selection-meta" aria-live="polite">
+            <div><span class="meta-label" data-en="Seed" data-ko="시드">Seed</span><span class="meta-value" id="selected-seed">—</span></div>
+            <div><span class="meta-label" data-en="Structure" data-ko="구조 유사도">Structure</span><span class="meta-value" id="selected-structure">—</span></div>
+            <div><span class="meta-label" data-en="Clean edges" data-ko="에지 정돈">Clean edges</span><span class="meta-value" id="selected-cleanliness">—</span></div>
+            <div><span class="meta-label" data-en="Distinctive" data-ko="차별성">Distinctive</span><span class="meta-value" id="selected-distinctiveness">—</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="directions" aria-labelledby="directions-title">
+        <div class="directions-head">
+          <div>
+            <h2 id="directions-title"><span class="step">3</span><span data-en="Compare directions" data-ko="방향 비교">Compare directions</span></h2>
+            <p data-en="The sketch and brief stay fixed; each seed opens a different branch." data-ko="스케치와 브리프는 고정하고, 시드마다 다른 가지를 탐색합니다.">The sketch and brief stay fixed; each seed opens a different branch.</p>
+          </div>
+          <div class="direction-tip"><span aria-hidden="true">↗</span><span data-en="Choose a thumbnail, then open the result large." data-ko="썸네일을 선택한 뒤 결과를 크게 열어보세요.">Choose a thumbnail, then open the result large.</span></div>
+        </div>
+        <div class="candidate-rail" id="candidate-rail" aria-label="Generated directions"></div>
+      </section>
+    </section>
+
+    <section class="handoff" aria-labelledby="handoff-title">
+      <div class="handoff-story">
+        <h2 id="handoff-title" data-en="The image is the decision. The manifest is the memory." data-ko="이미지는 결정이고, manifest는 그 결정의 기억입니다.">The image is the decision. The manifest is the memory.</h2>
+        <p data-en="AIsketcher records the brief, seed plan, pinned model revisions, technical scores, source diagnostics, file hashes, and lineage beside the visual output."
+           data-ko="AIsketcher는 결과 이미지와 함께 브리프, 시드 계획, 고정된 모델 리비전, 기술 점수, 입력 진단, 파일 해시와 계보를 기록합니다.">
+          AIsketcher records the brief, seed plan, pinned model revisions, technical scores, source diagnostics, file hashes, and lineage beside the visual output.
+        </p>
+        <div class="seed-callout">
+          <span class="seed-icon" aria-hidden="true">#</span>
+          <div>
+            <strong data-en="Why the seed matters" data-ko="시드가 중요한 이유">Why the seed matters</strong>
+            <p data-en="A seed is not a quality score. It is the address of one visual branch. Recording it lets a team return to the same branch before refining it."
+               data-ko="시드는 품질 점수가 아니라 한 시각적 방향의 주소입니다. 기록해두면 팀이 같은 방향으로 돌아와 이어서 발전시킬 수 있습니다.">
+              A seed is not a quality score. It is the address of one visual branch. Recording it lets a team return to the same branch before refining it.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="manifest-panel">
+        <h3 data-en="Reproducibility receipt" data-ko="재현성 원장">Reproducibility receipt</h3>
+        <p data-en="These values are read directly from the bundled manifest.json." data-ko="아래 값은 번들된 manifest.json에서 직접 읽었습니다.">These values are read directly from the bundled manifest.json.</p>
+        <dl class="ledger">
+          <div><dt data-en="Schema" data-ko="스키마">Schema</dt><dd id="ledger-schema">—</dd></div>
+          <div><dt data-en="Run" data-ko="실행 ID">Run</dt><dd id="ledger-run">—</dd></div>
+          <div><dt data-en="Preset" data-ko="프리셋">Preset</dt><dd id="ledger-preset">—</dd></div>
+          <div><dt data-en="Seed mode" data-ko="시드 모드">Seed mode</dt><dd id="ledger-seed-mode">—</dd></div>
+          <div><dt data-en="Recipe hash" data-ko="레시피 해시">Recipe hash</dt><dd id="ledger-hash">—</dd></div>
+          <div><dt data-en="Pinned models" data-ko="고정 모델">Pinned models</dt><dd id="ledger-models">—</dd></div>
+        </dl>
+        <details>
+          <summary data-en="Inspect raw manifest" data-ko="원본 manifest 보기">Inspect raw manifest</summary>
+          <pre id="raw-manifest">Loading…</pre>
+        </details>
+      </div>
+    </section>
+
+    <footer class="local-footer">
+      <span data-en="Everything on this page came from the installed AIsketcher package." data-ko="이 페이지의 모든 내용은 설치된 AIsketcher 패키지에서만 불러옵니다.">Everything on this page came from the installed AIsketcher package.</span>
+      <span data-en="Return to the terminal and press Ctrl+C to stop the tour." data-ko="투어를 종료하려면 터미널로 돌아가 Ctrl+C를 누르세요.">Return to the terminal and press Ctrl+C to stop the tour.</span>
+    </footer>
+  </main>
+
+  <dialog id="lightbox" aria-labelledby="dialog-title">
+    <div class="dialog-head">
+      <strong id="dialog-title" data-en="Selected direction" data-ko="선택한 방향">Selected direction</strong>
+      <button type="button" id="close-dialog" aria-label="Close">×</button>
+    </div>
+    <div class="dialog-image"><img id="dialog-image" alt="Expanded generated direction"></div>
+    <div class="dialog-foot">
+      <span id="dialog-seed">Seed —</span>
+      <span data-en="Bundled Guided Sample · unchanged local preview" data-ko="번들 가이드 샘플 · 변경 없는 로컬 미리보기">Bundled Guided Sample · unchanged local preview</span>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const state = { manifest: null, selected: 0, language: "en" };
+      const byId = (id) => document.getElementById(id);
+      const locale = {
+        en: {
+          direction: "Direction",
+          winner: "HPO pick",
+          seed: "Seed",
+          sourceAlt: "Original hand-drawn Pocket Kingdom sketch",
+          controlAlt: "Canny edge map derived from the Pocket Kingdom sketch",
+          resultAlt: "Generated Pocket Kingdom design direction",
+          badge: {
+            "cleanest edges": "cleanest edges",
+            "most distinct": "most distinct",
+            "closest structure": "closest structure"
+          }
+        },
+        ko: {
+          direction: "방향",
+          winner: "HPO 추천",
+          seed: "시드",
+          sourceAlt: "포켓 킹덤 손그림 원본 스케치",
+          controlAlt: "포켓 킹덤 스케치에서 추출한 Canny 에지 맵",
+          resultAlt: "생성된 포켓 킹덤 디자인 방향",
+          badge: {
+            "cleanest edges": "가장 정돈된 에지",
+            "most distinct": "가장 차별화됨",
+            "closest structure": "구조 유사도 최고"
+          }
+        }
+      };
+
+      function setLanguage(language) {
+        state.language = language === "ko" ? "ko" : "en";
+        document.documentElement.lang = state.language;
+        document.title = state.language === "ko" ? "AIsketcher · 가이드 투어" : "AIsketcher · Guided Tour";
+        document.querySelectorAll("[data-en][data-ko]").forEach((element) => {
+          element.textContent = element.dataset[state.language];
+        });
+        document.querySelectorAll("[data-language]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.language === state.language));
+        });
+        const sourceMode = byId("show-source").getAttribute("aria-pressed") === "true" ? "source" : "control";
+        byId("source-image").alt = sourceMode === "source" ? locale[state.language].sourceAlt : locale[state.language].controlAlt;
+        renderCandidates();
+        renderSelection();
+      }
+
+      function candidatePath(candidate) {
+        return "/sample/" + state.manifest.files[candidate.file].path;
+      }
+
+      function percent(value) {
+        return typeof value === "number" ? (value * 100).toFixed(1) + "%" : "—";
+      }
+
+      function compactHash(value) {
+        return value ? value.slice(0, 12) + "…" : "—";
+      }
+
+      function renderCandidates() {
+        if (!state.manifest) return;
+        const copy = locale[state.language];
+        const rail = byId("candidate-rail");
+        rail.replaceChildren();
+        state.manifest.candidates.forEach((candidate, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "candidate";
+          button.setAttribute("aria-pressed", String(index === state.selected));
+          button.setAttribute("aria-label", copy.direction + " " + (index + 1) + ", " + copy.seed + " " + candidate.seed);
+
+          const image = document.createElement("img");
+          image.src = candidatePath(candidate);
+          image.alt = copy.resultAlt + " " + (index + 1);
+          image.loading = "lazy";
+          button.appendChild(image);
+
+          if (candidate.id === state.manifest.selection) {
+            const winner = document.createElement("span");
+            winner.className = "winner-flag";
+            winner.textContent = copy.winner;
+            button.appendChild(winner);
+          }
+
+          const caption = document.createElement("span");
+          caption.className = "candidate-caption";
+          const name = document.createElement("span");
+          name.className = "candidate-name";
+          name.textContent = copy.direction + " " + (index + 1);
+          const seed = document.createElement("span");
+          seed.className = "candidate-seed";
+          seed.textContent = String(candidate.seed);
+          caption.append(name, seed);
+          button.appendChild(caption);
+
+          button.addEventListener("click", () => selectCandidate(index));
+          button.addEventListener("dblclick", openLightbox);
+          rail.appendChild(button);
+        });
+      }
+
+      function selectCandidate(index) {
+        if (!state.manifest || index < 0 || index >= state.manifest.candidates.length) return;
+        const figure = byId("result-figure");
+        figure.classList.add("is-changing");
+        state.selected = index;
+        window.setTimeout(() => {
+          renderCandidates();
+          renderSelection();
+          figure.classList.remove("is-changing");
+        }, 90);
+      }
+
+      function renderSelection() {
+        if (!state.manifest) return;
+        const candidate = state.manifest.candidates[state.selected];
+        const copy = locale[state.language];
+        const image = byId("selected-image");
+        image.src = candidatePath(candidate);
+        image.alt = copy.resultAlt + " " + (state.selected + 1);
+        byId("selected-seed").textContent = String(candidate.seed);
+        byId("selected-structure").textContent = percent(candidate.scores.structure_similarity);
+        byId("selected-cleanliness").textContent = percent(candidate.scores.edge_cleanliness);
+        byId("selected-distinctiveness").textContent = percent(candidate.scores.distinctiveness);
+        const badges = candidate.scores.badges || [];
+        byId("selected-badges").textContent = badges.map((badge) => copy.badge[badge] || badge).join(" · ");
+        byId("dialog-image").src = candidatePath(candidate);
+        byId("dialog-image").alt = copy.resultAlt + " " + (state.selected + 1);
+        byId("dialog-seed").textContent = copy.seed + " " + candidate.seed;
+      }
+
+      function openLightbox() {
+        if (!state.manifest) return;
+        renderSelection();
+        byId("lightbox").showModal();
+      }
+
+      function renderManifest(manifest, rawManifest) {
+        byId("prompt").textContent = manifest.recipe.prompt;
+        byId("ledger-schema").textContent = manifest.schema;
+        byId("ledger-run").textContent = manifest.run_id;
+        byId("ledger-preset").textContent = manifest.recipe.preset;
+        byId("ledger-seed-mode").textContent = manifest.seed_plan.mode;
+        byId("ledger-hash").textContent = compactHash(manifest.recipe_sha256);
+        byId("ledger-hash").title = manifest.recipe_sha256;
+        byId("ledger-models").textContent = String(manifest.recipe.models.length) + " revisions";
+        byId("raw-manifest").textContent = rawManifest;
+        const selectionIndex = manifest.candidates.findIndex((candidate) => candidate.id === manifest.selection);
+        state.selected = selectionIndex >= 0 ? selectionIndex : 0;
+        renderCandidates();
+        renderSelection();
+      }
+
+      function setSourceMode(mode) {
+        const source = mode !== "control";
+        byId("show-source").setAttribute("aria-pressed", String(source));
+        byId("show-control").setAttribute("aria-pressed", String(!source));
+        byId("source-image").src = source ? "/sample/prepared/source.png" : "/sample/prepared/control.png";
+        byId("source-image").alt = source ? locale[state.language].sourceAlt : locale[state.language].controlAlt;
+      }
+
+      document.querySelectorAll("[data-language]").forEach((button) => {
+        button.addEventListener("click", () => setLanguage(button.dataset.language));
+      });
+      byId("show-source").addEventListener("click", () => setSourceMode("source"));
+      byId("show-control").addEventListener("click", () => setSourceMode("control"));
+      byId("expand-result").addEventListener("click", openLightbox);
+      byId("close-dialog").addEventListener("click", () => byId("lightbox").close());
+      byId("lightbox").addEventListener("click", (event) => {
+        if (event.target === byId("lightbox")) byId("lightbox").close();
+      });
+
+      const requestedLanguage = new URLSearchParams(window.location.search).get("lang");
+      const preferredLanguage = requestedLanguage || (navigator.language.toLowerCase().startsWith("ko") ? "ko" : "en");
+      setLanguage(preferredLanguage);
+
+      fetch("/sample/manifest.json", { cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error("manifest request failed");
+          return response.text();
+        })
+        .then((rawManifest) => {
+          const exactSeeds = Array.from(
+            rawManifest.matchAll(/"seed"\s*:\s*(\d+)/g),
+            (match) => match[1]
+          );
+          const manifest = JSON.parse(rawManifest);
+          manifest.candidates.forEach((candidate, index) => {
+            if (exactSeeds[index]) candidate.seed = exactSeeds[index];
+          });
+          state.manifest = manifest;
+          renderManifest(manifest, rawManifest);
+        })
+        .catch(() => {
+          byId("load-error").style.display = "block";
+          byId("raw-manifest").textContent = "manifest unavailable";
+        });
+    })();
+  </script>
+</body>
+</html>

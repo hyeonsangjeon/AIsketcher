@@ -6,9 +6,9 @@ request validation and use protected deployment boundaries.
 
 - `ci.yml` tests the core SDK, runs the model-free Playwright Studio regression
   suite, builds documentation strictly, and inspects distribution artifacts.
-- `pages.yml` is manual-only and deploys the already reviewable MkDocs site to
-  GitHub Pages. Merging to `main` or publishing a package does not deploy the
-  documentation site automatically.
+- `pages.yml` deploys the reviewed MkDocs site after every successful push to
+  `main` and also supports a manual recovery dispatch. Pull requests still
+  validate the same strict documentation build in `ci.yml` without deploying.
 - `publish-pypi.yml` starts when a GitHub Release is published from a matching
   `v<version>` tag. It derives and verifies the package version, requires a
   successful `ci.yml` run for that exact immutable event SHA, builds and

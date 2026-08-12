@@ -9,25 +9,32 @@ preset’s license, files, cache destination, and estimated download size.
 | Studio option | Versioned preset | Intended use | Approximate first download |
 | --- | --- | --- | ---: |
 | Guided Sample | bundled fixture | learn the workflow | none |
-| FLUX.2 Klein Edit — recommended | `flux2-klein-edit@1` | fast sketch rendering, photo restyling, and instruction edits on a 16 GB NVIDIA T4 | about 16.2 GB |
-| SDXL Canny Lite — legacy | `sdxl-canny-lite@1` | replay existing SDXL manifests and lower-memory edge conditioning | about 7.3 GB |
-| SDXL Canny Quality — legacy | `sdxl-canny@1` | replay existing full-ControlNet SDXL recipes | about 9.4 GB |
+| Fast Edit · FLUX.2 Klein | `flux2-klein-edit@1` | photo restyling, flexible sketch interpretation, and instruction edits on a 16 GB NVIDIA T4 | about 16.2 GB |
+| Structure Lock · SDXL Canny Lite | `sdxl-canny-lite@1` | strict lines, lower-memory edge conditioning, and legacy replay | about 7.3 GB |
+| Structure Lock+ · SDXL Canny | `sdxl-canny@1` | full legacy ControlNet and strict Canny replay | about 9.4 GB |
 | Korean→English helper | pinned `facebook/m2m100_418M` adapter | protect recognized design terms, then prepare model-facing English while preserving Korean input | about 1.9 GB when absent |
 
-FLUX.2 Klein Edit is the default for new live studies. It uses the uploaded
-image as a reference and does not use Canny ControlNet. The two SDXL presets
-remain available for explicit installation and replay when needed, but are
-labeled Legacy rather than presented as the modern default.
+FLUX.2 Klein Edit is the concrete Fast Edit choice for new live studies. It
+uses the uploaded image as a reference and does not use Canny ControlNet, so it
+does not guarantee exact line locking. The two SDXL presets remain available
+as Structure Lock legacy paths. `auto` remains an API/configuration alias for
+FLUX.2 but is no longer presented as though it classified the input.
 
 Sizes cover only the pinned, allow-listed files at the revisions below. Studio
 shows the model’s intended use, expected transfer, cache policy, device
 expectation, and license confirmation; `plan_install()` exposes the exact
 destinations for programmatic review before downloading.
 
-The Studio preparation layer also shows the pinned Korean→English helper when
-it is missing. **Review & prepare model** explicitly confirms the selected
-image model and helper together. Leaving setup before pressing that button
-performs no network access.
+The Korean Studio preparation layer also shows the pinned Korean→English
+helper when it is missing. English setup prepares only the selected image
+model. **Review & prepare model** confirms exactly the displayed downloads.
+Leaving setup before pressing that button performs no network access.
+
+Before the packaged Studio starts a transfer it checks the configured device,
+CUDA availability, known VRAM, and free cache space. This interactive preflight
+prevents an unsupported CPU/MPS machine from downloading a model it cannot
+run. Direct `PresetManager` integrations retain explicit control for preparing
+a cache that will be moved to another machine.
 
 ## Pinned repositories
 

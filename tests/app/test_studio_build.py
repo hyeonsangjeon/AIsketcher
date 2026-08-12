@@ -66,6 +66,7 @@ def test_simple_generation_ignores_hidden_advanced_config() -> None:
         "graphic_design",
         "faithful",
         AUTO_MODEL,
+        1,
         QUALITY_PRESET,
         1,
         "locked",
@@ -81,7 +82,7 @@ def test_simple_generation_ignores_hidden_advanced_config() -> None:
     assert resolved[:5] == values[:5]
     assert resolved[5:] == (
         FLUX_PRESET,
-        4,
+        1,
         "scout",
         "",
         False,
@@ -100,6 +101,7 @@ def test_simple_legacy_selection_keeps_the_legacy_canny_recipe() -> None:
         "graphic_design",
         "balanced",
         LITE_PRESET,
+        8,
         FLUX_PRESET,
         8,
         "explicit",
@@ -114,7 +116,7 @@ def test_simple_legacy_selection_keeps_the_legacy_canny_recipe() -> None:
 
     assert resolved[5:] == (
         LITE_PRESET,
-        4,
+        8,
         "scout",
         "",
         True,
@@ -133,6 +135,7 @@ def test_advanced_generation_keeps_visible_config() -> None:
         "graphic_design",
         "faithful",
         AUTO_MODEL,
+        1,
         QUALITY_PRESET,
         8,
         "explicit",
@@ -143,7 +146,7 @@ def test_advanced_generation_keeps_visible_config() -> None:
         ("structure",),
     )
 
-    assert _generation_args_for_view(values) == values[:5] + values[6:]
+    assert _generation_args_for_view(values) == values[:5] + values[7:]
 
 
 def test_advanced_flux_generation_uses_the_validated_locked_recipe() -> None:
@@ -155,6 +158,7 @@ def test_advanced_flux_generation_uses_the_validated_locked_recipe() -> None:
         "graphic_design",
         "faithful",
         AUTO_MODEL,
+        1,
         FLUX_PRESET,
         4,
         "scout",
@@ -183,10 +187,10 @@ def test_preset_selection_is_canonical_and_localized() -> None:
     selected, plan = _preset_selection("ko", QUALITY_PRESET)
 
     assert selected == QUALITY_PRESET
-    assert plan.startswith("**SDXL Canny Quality · 레거시**")
+    assert plan.startswith("**구조 잠금+ · SDXL Canny · 레거시**")
     auto_selected, auto_plan = _preset_selection("en", AUTO_MODEL)
     assert auto_selected == FLUX_PRESET
-    assert "recommended" in auto_plan
+    assert "compatibility alias" in auto_plan
     with pytest.raises(ValueError, match="packaged"):
         _preset_selection("en", "arbitrary-model")
 
@@ -356,23 +360,23 @@ def test_model_prepare_uses_generation_preset_component(tmp_path: Path) -> None:
     model_update = app._studio_sync_model_preset(state, QUALITY_PRESET)
     generation_update = app._studio_sync_generation_preset(state, LITE_PRESET)
     assert model_update[0]["value"] == QUALITY_PRESET
-    assert model_update[1]["value"].startswith("**SDXL Canny Quality · 레거시**")
+    assert model_update[1]["value"].startswith("**구조 잠금+ · SDXL Canny · 레거시**")
     assert model_update[4]["value"] is True
     assert model_update[5]["value"] == 30
     assert generation_update[0]["value"] == LITE_PRESET
-    assert generation_update[1]["value"].startswith("**SDXL Canny Lite · 레거시**")
+    assert generation_update[1]["value"].startswith("**구조 잠금 · SDXL Canny Lite · 레거시**")
 
     reset = app._studio_clear_overrides(state)
     assert reset[1] == QUALITY_PRESET
     assert reset[4]["value"] == 8
     assert reset[10] == QUALITY_PRESET
-    assert reset[11]["value"].startswith("**SDXL Canny Quality · 레거시**")
+    assert reset[11]["value"].startswith("**구조 잠금+ · SDXL Canny · 레거시**")
 
 
 @pytest.mark.skipif(
     importlib.util.find_spec("gradio") is None, reason="Gradio demo extra is absent"
 )
-def test_simple_model_selector_defaults_to_auto_and_confirms_with_button(
+def test_simple_model_selector_defaults_to_concrete_flux_and_confirms_with_button(
     tmp_path: Path,
 ) -> None:
     installed: list[tuple[str, dict[str, Any]]] = []
@@ -402,17 +406,20 @@ def test_simple_model_selector_defaults_to_auto_and_confirms_with_button(
     }
 
     simple_model = by_elem_id["simple-model-choice"]
-    assert simple_model["props"]["value"] == AUTO_MODEL
+    simple_output = by_elem_id["simple-output-control"]
+    assert simple_model["props"]["value"] == FLUX_PRESET
     assert [value for _, value in simple_model["props"]["choices"]] == [
-        AUTO_MODEL,
         FLUX_PRESET,
         LITE_PRESET,
         QUALITY_PRESET,
     ]
     assert "about 16.2 GB" in by_elem_id["simple-model-plan"]["props"]["value"]
+    assert "1.9 GB" not in by_elem_id["simple-model-plan"]["props"]["value"]
     assert "Current installer plan" not in by_elem_id["simple-model-plan"]["props"]["value"]
     assert by_elem_id["model-choice"]["props"]["choices"][0][1] == FLUX_PRESET
     assert by_elem_id["model-choice"]["props"]["value"] == FLUX_PRESET
+    assert simple_output["props"]["value"] == 1
+    assert [value for _, value in simple_output["props"]["choices"]] == [1, 4, 8]
 
     simple_model_id = simple_model["id"]
     simple_status_id = by_elem_id["simple-model-status"]["id"]
@@ -429,19 +436,37 @@ def test_simple_model_selector_defaults_to_auto_and_confirms_with_button(
     assert "model-choice" not in input_elem_ids
 
     state = AppState.new("ko").payload()
-    plan_update, status_update = app._studio_sync_simple_model(state, AUTO_MODEL)
-    assert "이미지 모델이 없으면 약 16.2 GB" in plan_update["value"]
-    assert "한→영 도우미가 없으면 약 1.9 GB" in plan_update["value"]
+    plan_update, status_update = app._studio_sync_simple_model(state, FLUX_PRESET)
+    assert "최초 이미지 모델 약 16.2 GB" in plan_update["value"]
+    assert "한→영 도우미" in plan_update["value"]
     assert status_update == ""
     operation_id = controller.start_operation(state)
     assert (
-        app._studio_prepare_simple_model(operation_id, state, AUTO_MODEL)
+        app._studio_prepare_simple_model(operation_id, state, FLUX_PRESET)
         == "로컬 모델 준비를 마쳤습니다."
     )
     assert installed[0][0] == FLUX_PRESET
     assert installed[0][1]["confirm"] is True
     assert len(translator_prepares) == 1
     assert translator_prepares[0]["confirm"] is True
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("gradio") is None, reason="Gradio demo extra is absent"
+)
+def test_legacy_auto_build_argument_is_canonicalized_to_visible_flux(tmp_path: Path) -> None:
+    app = build_app(
+        AppController(workspace_root=tmp_path),
+        default_simple_model=AUTO_MODEL,
+    )
+    simple_model = next(
+        component
+        for component in app.config["components"]
+        if component.get("props", {}).get("elem_id") == "simple-model-choice"
+    )
+
+    assert simple_model["props"]["value"] == FLUX_PRESET
+    assert AUTO_MODEL not in {value for _, value in simple_model["props"]["choices"]}
 
 
 @pytest.mark.skipif(
@@ -506,23 +531,11 @@ def test_model_descriptions_render_current_installer_plan_in_every_callback(
 
     initial_simple = by_elem_id["simple-model-plan"]["value"]
     initial_advanced = by_elem_id["model-plan"]["value"]
-    for rendered, preset in (
-        (initial_simple, FLUX_PRESET),
-        (initial_advanced, QUALITY_PRESET),
-    ):
+    for rendered, preset in ((initial_simple, FLUX_PRESET), (initial_advanced, QUALITY_PRESET)):
         assert '<details class="installer-plan-details">' in rendered
         assert "<details" in rendered and "<details open" not in rendered
         assert "Current installer plan" in rendered
-        assert "Pinned Korean→English helper" in rendered
-        assert "<code>facebook/m2m100_418M</code>" in rendered
-        assert "<code>55c2e61bbf05dfb8d7abccdc3fae6fc8512fd636</code>" in rendered
-        assert "<strong>Transfer if missing:</strong> 1.9 GB" in rendered
-        assert (
-            "<strong>Upstream license:</strong> "
-            '<a href="https://huggingface.co/facebook/m2m100_418M" '
-            'target="_blank" rel="noreferrer">MIT</a>' in rendered
-        )
-        assert "Default Hugging Face cache" in rendered
+        assert "Pinned Korean→English helper" not in rendered
         assert f"<code>{preset}</code>" in rendered
         assert (
             "<strong>Verified in this Studio process</strong> · "
@@ -554,7 +567,7 @@ def test_model_descriptions_render_current_installer_plan_in_every_callback(
     localized = app._studio_localize(
         state,
         "ko",
-        AUTO_MODEL,
+        FLUX_PRESET,
         QUALITY_PRESET,
         "scout",
     )
@@ -770,15 +783,15 @@ def test_runtime_localization_updates_canny_info_and_model_plan(tmp_path: Path) 
     updates = app._studio_localize(
         controller.initial_state("en"),
         "ko",
-        AUTO_MODEL,
+        FLUX_PRESET,
         QUALITY_PRESET,
         "scout",
     )
 
     assert updates[27]["info"] == "현재 SDXL 프리셋에 필요한 설정입니다."
-    assert updates[8]["value"] == AUTO_MODEL
-    assert "이미지 모델이 없으면 약 16.2 GB" in updates[9]["value"]
-    assert "한→영 도우미가 없으면 약 1.9 GB" in updates[9]["value"]
+    assert updates[8]["value"] == FLUX_PRESET
+    assert "최초 이미지 모델 약 16.2 GB" in updates[9]["value"]
+    assert "한→영 도우미" in updates[9]["value"]
     assert updates[23]["value"] == QUALITY_PRESET
     assert updates[36]["value"] == QUALITY_PRESET
-    assert updates[37]["value"].startswith("**SDXL Canny Quality · 레거시**")
+    assert updates[37]["value"].startswith("**구조 잠금+ · SDXL Canny · 레거시**")

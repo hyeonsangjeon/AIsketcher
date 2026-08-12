@@ -13,7 +13,7 @@ from aisketcher.studio_app import AppController, GuidedSampleCatalog, build_app
 
 
 def run() -> None:
-    assert version("AIsketcher") == aisketcher.__version__ == "0.3.0"
+    assert version("AIsketcher") == aisketcher.__version__ == "0.4.0"
     assert find_spec("AIsketcher") is None
     assert find_spec("aisketcher.modelPipe") is None
     sample = GuidedSampleCatalog().load()

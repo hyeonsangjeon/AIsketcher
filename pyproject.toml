@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AIsketcher"
-version = "0.3.0"
-description = "Reproducible, structure-guided sketch-to-image exploration for designers"
+version = "0.4.0"
+description = "Model-independent sketch-to-image studies with seed scouting and replayable manifests"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT AND LicenseRef-AIsketcher-Artwork"
@@ -15,9 +15,15 @@ authors = [
 ]
 keywords = [
   "controlnet",
+  "creative-coding",
+  "design-lineage",
   "design-exploration",
   "diffusers",
   "generative-ai",
+  "gradio",
+  "image-editing",
+  "reproducible-ai",
+  "seed-management",
   "sketch-to-image",
 ]
 classifiers = [
@@ -98,6 +104,7 @@ aisketcher = [
   "studio_app/assets/pocket-kingdom/manifest.json",
   "studio_app/assets/pocket-kingdom/prepared/*.png",
   "studio_app/assets/pocket-kingdom/scout/*.png",
+  "tour/index.html",
 ]
 
 [tool.pytest.ini_options]

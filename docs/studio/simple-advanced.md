@@ -6,7 +6,7 @@ Studio code, console command, and reviewed Guided Sample are packaged in the
 base wheel; the `demo` extra adds the Gradio runtime needed to launch them.
 
 ```bash
-python -m pip install "aisketcher[demo]==0.3.0"
+python -m pip install "aisketcher[demo]==0.4.0"
 aisketcher init  # First run only; omit when settings already exist.
 aisketcher studio
 ```
@@ -32,10 +32,10 @@ opens without model weights, network access, or an image upload. Pocket Kingdom
 remains a separate documentation-only canonical lineage example.
 
 This screenshot remains the canonical historical SDXL Canny sample. It is
-provenance evidence for that recorded recipe, not a claim that SDXL is still
-the default. New live studies start with **FLUX.2 Klein Edit**; choose an SDXL
-Canny preset only for legacy manifest replay or explicit edge-conditioned
-compatibility work.
+provenance evidence for that recorded recipe, not a claim that SDXL is a modern
+quality default. New live studies expose concrete roles: **Fast Edit** uses
+FLUX.2 Klein reference-image editing, while **Structure Lock** uses the legacy
+SDXL Canny path when exact lines matter more than current-generation quality.
 
 ## Simple is the default
 
@@ -44,19 +44,22 @@ Simple asks for:
 1. a sketch;
 2. a one-sentence creative brief;
 3. a work profile;
-4. Loose, Balanced, or Faithful structure.
+4. Loose, Balanced, or Faithful structure;
+5. a 1-, 4-, or 8-output budget.
 
-It creates four large candidate cards without an inner gallery scrollbar,
-preserves their generation order, and lets you enlarge any input or result.
+It starts with one quick proof. Choose four directions for comparison or eight
+for a wider seed search. Candidate cards avoid an inner gallery scrollbar,
+preserve generation order, and let you enlarge any input or result.
 After picking a direction, choose **Refine this direction**,
 **Try another direction**, or **Finalize & export**.
 
-Simple starts with the T4-validated `flux2-klein-edit@1` preset. FLUX.2 Klein
-uses the uploaded image as a reference for fast sketch rendering and semantic
-edits; it is not a ControlNet. A compact model choice explains what each option
-is best for and whether its pinned files are already cached. Project
+Simple starts with the T4-validated `flux2-klein-edit@1` **Fast Edit** preset.
+FLUX.2 Klein uses the uploaded image as a reference for fast sketch
+interpretation and semantic edits; it is not a ControlNet and does not
+guarantee line locking. A compact model choice explains what each option is
+best for and whether its pinned files are already cached. Project
 configuration and Advanced controls remain available in the Advanced view, but
-cannot silently change this four-direction Simple experience.
+cannot silently change the Simple model or output choice.
 
 Raw seeds, legacy Canny parameters, steps, and guidance are intentionally
 absent from the default view.
@@ -77,10 +80,10 @@ through the Python API rather than the MVP Studio.
 output. Locked mode sets the output count to one; use it for controlled
 comparisons, not for discovering four directions.
 
-Returning to Simple does not discard those values, but Simple runs its fixed
-four-direction Scout instead of applying them invisibly. If an Advanced
-override is active, Simple displays **Advanced overrides active** and offers one
-explicit reset action.
+Returning to Simple does not discard those values, but Simple runs the output
+budget visible in its own rail instead of applying hidden Advanced values. If
+an Advanced override is active, Simple displays **Advanced overrides active**
+and offers one explicit reset action.
 
 ## Prompts and refinement
 
@@ -90,11 +93,11 @@ model-facing prompt with the pinned local translator. The original, prepared
 prompt, translator ID and revision, and any later refinement instruction are
 recorded separately. A deterministic glossary protects recognized
 visual-design terminology before Korean→English translation. The translator is
-never downloaded implicitly: the model preparation layer shows the
-MIT-licensed `facebook/m2m100_418M` helper, its pinned revision, and roughly
-1.9 GB transfer alongside the selected image model's own license.
-**Review & prepare model** confirms both downloads; leaving setup before
-pressing it performs no network access. If the translator runtime or weights
+never downloaded implicitly. English setup prepares only the image model.
+Korean Studio shows the MIT-licensed `facebook/m2m100_418M` helper, its pinned
+revision, and roughly 1.9 GB transfer alongside the selected image model's own
+license. **Review & prepare model** confirms the displayed downloads; leaving
+setup before pressing it performs no network access. If the translator runtime or weights
 are not ready, generation stops before GPU work; Studio does not silently send
 raw Korean text to an image model. Terminology protection improves consistency
 for its bounded glossary but does not guarantee perfect translation.

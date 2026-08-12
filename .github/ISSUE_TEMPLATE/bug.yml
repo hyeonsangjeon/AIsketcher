@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible SDK, Studio, packaging, or replay problem
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "aisketcher --version"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Python, operating system, and device
+      placeholder: "Python 3.12 · Ubuntu 24.04 · NVIDIA T4"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include the command or code, expected result, and actual result. Remove secrets and private paths.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Safe logs or manifest excerpt
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private paths, and personal data.
+          required: true

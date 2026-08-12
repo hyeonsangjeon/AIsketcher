@@ -180,9 +180,23 @@ def _model_choices(language: str) -> list[tuple[str, str]]:
 
 
 def _simple_model_choices(language: str) -> list[tuple[str, str]]:
+    # Keep ``auto`` accepted below for configuration/backwards compatibility,
+    # but do not expose a pretend router.  Every current Auto route resolves to
+    # FLUX.2 Klein, so the honest Simple-mode choice is the concrete model.
+    return _model_choices(language)
+
+
+def _simple_output_choices(language: str) -> list[tuple[str, int]]:
+    if normalize_language(language) == "ko":
+        return [
+            ("빠른 미리보기 · 1장", 1),
+            ("방향 탐색 · 4장", 4),
+            ("넓게 탐색 · 8장", 8),
+        ]
     return [
-        (text(language, "model_auto"), AUTO_MODEL),
-        *_model_choices(language),
+        ("Quick preview · 1", 1),
+        ("Explore directions · 4", 4),
+        ("Wider search · 8", 8),
     ]
 
 
@@ -376,7 +390,13 @@ def _model_plan(
     static_plan = text(language, key)
     if controller is None:
         return static_plan
-    translator_plan = _render_translator_plan(language, controller)
+    # The translation helper is prepared only for the Korean Studio.  Keeping
+    # it out of an English first run removes an unnecessary 1.9 GB transfer.
+    translator_plan = (
+        _render_translator_plan(language, controller)
+        if normalize_language(language) == "ko"
+        else ""
+    )
     canonical = FLUX_PRESET if preset == AUTO_MODEL else preset
     plan_model_install = getattr(controller, "plan_model_install", None)
     if not callable(plan_model_install):
@@ -474,16 +494,17 @@ def _seed_output_state(
 def _generation_args_for_view(values: Sequence[Any]) -> tuple[Any, ...]:
     """Resolve the Simple model recipe without mutating Advanced controls."""
 
-    if len(values) != 14:
-        raise ValueError("generation callback requires 14 values")
+    if len(values) != 15:
+        raise ValueError("generation callback requires 15 values")
     resolved = list(values)
     state = AppState.from_payload(resolved[0])
     simple_model = str(resolved.pop(5))
+    simple_output_count = int(resolved.pop(5))
     if state.view != "advanced":
         preset, _ = _preset_selection(state.language, simple_model)
         canny, steps, guidance = _preset_generation_defaults(preset)
         resolved[5] = preset
-        resolved[6] = 4
+        resolved[6] = simple_output_count
         resolved[7] = "scout"
         resolved[8] = ""
         resolved[9] = canny
@@ -541,8 +562,8 @@ def build_app(
     *,
     language: str = "en",
     default_preset: str = FLUX_PRESET,
-    default_simple_model: str = AUTO_MODEL,
-    default_output_count: int = 4,
+    default_simple_model: str = FLUX_PRESET,
+    default_output_count: int = 1,
     default_seed_mode: str = "scout",
     default_seed: int | None = None,
 ) -> Any:
@@ -564,6 +585,11 @@ def build_app(
         raise ValueError("preset must be a packaged AIsketcher preset")
     if default_simple_model not in {AUTO_MODEL, *PACKAGED_PRESETS}:
         raise ValueError("simple model must be Auto or a packaged AIsketcher preset")
+    # ``auto`` remains a configuration compatibility alias, but it is no
+    # longer a visible selector choice. Canonicalize it before Gradio validates
+    # the component value so downstream callers never receive a blank field.
+    if default_simple_model == AUTO_MODEL:
+        default_simple_model = FLUX_PRESET
     if default_output_count not in {1, 4, 8}:
         raise ValueError("output_count must be 1, 4, or 8")
     if default_seed_mode not in {"scout", "locked", "explicit"}:
@@ -602,7 +628,7 @@ def build_app(
         button_primary_text_color="#ffffff",
     )
 
-    with gr.Blocks(title="AIsketcher v2 Studio", fill_width=True) as demo:
+    with gr.Blocks(title="AIsketcher v0.4 Studio", fill_width=True) as demo:
         app_state = gr.BrowserState(
             controller.initial_state(language),
             storage_key=BROWSER_SESSION_STORAGE_KEY,
@@ -615,7 +641,7 @@ def build_app(
 
         with gr.Row(elem_id="studio-header", equal_height=True):
             gr.HTML(
-                '<div id="studio-brand">AIsketcher <span class="version">v2</span></div>',
+                '<div id="studio-brand">AIsketcher <span class="version">v0.4</span></div>',
                 container=False,
             )
             view_nav = gr.Radio(
@@ -705,6 +731,14 @@ def build_app(
                 simple_model_plan = gr.Markdown(
                     _model_plan(language, default_simple_model, controller),
                     elem_id="simple-model-plan",
+                )
+                simple_output_count = gr.Radio(
+                    _simple_output_choices(language),
+                    value=default_output_count,
+                    label=text(language, "simple_outputs"),
+                    info=text(language, "simple_outputs_info"),
+                    elem_id="simple-output-control",
+                    elem_classes="studio-field",
                 )
                 with gr.Row(elem_id="simple-model-actions"):
                     simple_model_button = gr.Button(
@@ -1272,6 +1306,7 @@ def build_app(
             profile,
             structure,
             simple_model_choice,
+            simple_output_count,
             preset,
             output_count,
             seed_mode,
@@ -2112,6 +2147,7 @@ def build_app(
             guided_choose_model,
             guided_keep_exploring,
             connection_recovery,
+            simple_output_count,
         ]
 
         def localize(
@@ -2230,6 +2266,11 @@ def build_app(
                 gr.update(value=text(lang, "guided_choose_model")),
                 gr.update(value=text(lang, "guided_keep_exploring")),
                 gr.update(value=_connection_recovery_html(lang)),
+                gr.update(
+                    label=text(lang, "simple_outputs"),
+                    info=text(lang, "simple_outputs_info"),
+                    choices=_simple_output_choices(lang),
+                ),
             )
 
         language_nav.change(

@@ -1,0 +1,60 @@
+name: Model benchmark result
+description: Share a reproducible model result or propose a model-role change
+title: "[model benchmark] "
+labels: ["model-benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing evidence. Please remove private images, paths, prompts, and credentials before attaching anything.
+  - type: input
+    id: version
+    attributes:
+      label: AIsketcher version or commit
+      placeholder: "0.4.0 or 0123456"
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model, immutable revision, and runtime
+      placeholder: "org/model @ 40-char commit · Diffusers 0.x"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware and dtype
+      placeholder: "NVIDIA L4 24 GB · BF16"
+    validations:
+      required: true
+  - type: dropdown
+    id: input_kind
+    attributes:
+      label: Input category
+      options:
+        - Sparse pencil or line art
+        - Dense child drawing
+        - Product or industrial outline
+        - Graphic composition
+        - Person or portrait
+        - Photo or semantic edit
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproducible evidence
+      description: Include seeds, latency, peak VRAM, structure/adherence observations, failure count, and a privacy-reviewed manifest or minimal script.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Publication check
+      options:
+        - label: I have permission to publish the attached inputs and outputs.
+          required: true
+        - label: I removed secrets, private paths, EXIF, and personal data.
+          required: true

@@ -3,6 +3,39 @@
 This page tracks user-visible package changes. PyPI is the source of truth for
 whether a listed version is publicly available.
 
+## 0.4.0
+
+Version 0.4.0 resets the first-use and model-selection experience around
+evidence rather than an unexplained multi-GB download.
+
+### Added
+
+- `aisketcher try`, a bilingual localhost tour of the bundled real study that
+  needs no Torch, Gradio, model, GPU, external network request, or telemetry;
+- pre-download checks for the configured device, CUDA availability, minimum
+  VRAM, and free model-cache space in the packaged Studio path;
+- an explicit model-role guide and reproducible benchmark issue form for
+  modern Structure and Pro candidates.
+
+### Changed
+
+- Simple mode shows concrete **Fast Edit**, **Structure Lock**, and
+  **Structure Lock+** choices instead of presenting a single FLUX route as an
+  intelligent Auto classifier;
+- FLUX.2 Klein is described accurately as fast reference-image editing rather
+  than strict Canny/line control;
+- English model setup no longer includes the separate 1.9 GB Korean→English
+  helper; Korean Studio prepares it for the Korean workflow;
+- Simple generation defaults to one quick proof and exposes 1-, 4-, and
+  8-output budgets instead of silently starting a four-image job;
+- the README and documentation lead with an actual Studio study and the
+  zero-download command instead of marketing artwork marked as non-output;
+- GitHub Pages deploys automatically after reviewed changes reach `main`;
+- package keywords and GitHub contribution surfaces now reflect design
+  lineage, reproducibility, seed management, image editing, and Gradio.
+
+See the detailed [0.4.0 release notes](releases/0.4.0.md).
+
 ## 0.3.0
 
 Version 0.3.0 modernizes the default local model path and makes Studio’s

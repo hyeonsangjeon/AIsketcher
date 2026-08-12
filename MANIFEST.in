@@ -1,7 +1,7 @@
 include README.md
 include LICENSE
 include ARTWORK_LICENSE.md
-recursive-include src *.py py.typed *.css *.json *.md *.png
+recursive-include src *.py py.typed *.css *.html *.json *.md *.png
 
 prune docs
 prune examples

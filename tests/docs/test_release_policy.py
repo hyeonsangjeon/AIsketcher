@@ -13,8 +13,8 @@ WORKFLOWS = ROOT / ".github/workflows"
 SCANNER = ROOT / "tests/docs/scan_distribution.py"
 STAGED_UPLOAD_VERIFIER = ROOT / "tests/docs/verify_staged_upload.py"
 
-WHEEL = "aisketcher-0.3.0-py3-none-any.whl"
-SDIST = "aisketcher-0.3.0.tar.gz"
+WHEEL = "aisketcher-0.4.0-py3-none-any.whl"
+SDIST = "aisketcher-0.4.0.tar.gz"
 
 
 def _release_tag_is_in_default_history(
@@ -79,6 +79,7 @@ def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     assert "mkdocs build --strict" in workflow
     assert "scan_distribution.py --repository . dist/*" in workflow
     assert "wheel_smoke.py" in workflow
+    assert "tests/test_tour.py" in workflow
     assert "python -m playwright install --with-deps chromium" in workflow
     assert 'AISKETCHER_BROWSER_E2E: "1"' in workflow
     assert "python -m pytest tests/e2e/test_studio_browser.py" in workflow
@@ -89,10 +90,11 @@ def test_normal_ci_has_read_only_permissions_and_expected_matrix() -> None:
     assert workflow.count("persist-credentials: false") == 6
 
 
-def test_pages_deployment_is_manual_only() -> None:
+def test_pages_deployment_tracks_main_and_supports_manual_recovery() -> None:
     workflow = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
-    assert "push:" not in workflow
+    assert "push:" in workflow
+    assert "branches: [main]" in workflow
     assert "pull_request:" not in workflow
 
 
@@ -405,21 +407,21 @@ def test_release_version_is_consistent_across_metadata_and_notes() -> None:
     package = (ROOT / "src/aisketcher/__init__.py").read_text(encoding="utf-8")
     manifest = (ROOT / "src/aisketcher/manifest.py").read_text(encoding="utf-8")
     lockfile = (ROOT / "uv.lock").read_text(encoding="utf-8")
-    notes = (ROOT / "docs/releases/0.3.0.md").read_text(encoding="utf-8")
+    notes = (ROOT / "docs/releases/0.4.0.md").read_text(encoding="utf-8")
 
-    assert 'version = "0.3.0"' in pyproject
-    assert '__version__ = "0.3.0"' in package
-    assert 'package_version = "0.3.0"' in manifest
-    assert 'name = "aisketcher"\nversion = "0.3.0"' in lockfile
-    assert notes.startswith("# AIsketcher 0.3.0\n")
+    assert 'version = "0.4.0"' in pyproject
+    assert '__version__ = "0.4.0"' in package
+    assert 'package_version = "0.4.0"' in manifest
+    assert 'name = "aisketcher"\nversion = "0.4.0"' in lockfile
+    assert notes.startswith("# AIsketcher 0.4.0\n")
 
 
 def test_readme_exposes_the_packaged_first_run() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "aisketcher init && aisketcher studio" in readme
+    assert "aisketcher try" in readme
     assert "\npip install aisketcher\n" in readme
-    assert "aisketcher[demo]==0.3.0" in readme
+    assert "aisketcher[demo]==0.4.0" in readme
     assert "lowercase `aisketcher`" in readme
     assert "Until PyPI lists" not in readme
     assert "releases/download/v0.2.0" not in readme
@@ -441,12 +443,12 @@ def test_pypi_description_uses_the_current_product_boundary() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert 'readme = "README.md"' in pyproject
-    assert "model-agnostic Python SDK" in readme
+    assert "model-independent Python toolkit" in readme
     assert 'preset = "flux2-klein-edit@1"' in readme
-    assert "Keep exploring the sample" in readme
+    assert "aisketcher try" in readme
     assert "Korean→English helper" in readme
     assert "aisketcher-studio-heritage-fixed-seed-en.jpg" in readme
-    assert "6764547109648557242" in readme
+    assert "Quick preview · 1" in readme
     assert "AWS Translate" not in readme
     assert "aws_access_key_id" not in readme
 

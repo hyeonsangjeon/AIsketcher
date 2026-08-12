@@ -276,7 +276,7 @@ def runtime_versions(backend: str) -> dict[str, str]:
     try:
         package_version = metadata.version("AIsketcher")
     except metadata.PackageNotFoundError:
-        package_version = "0.3.0"
+        package_version = "0.4.0"
     versions = {
         "aisketcher": package_version,
         "python": platform.python_version(),
