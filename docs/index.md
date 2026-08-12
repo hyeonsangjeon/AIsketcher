@@ -66,8 +66,9 @@ lineage, manifest, and replay contract.
 
 ## Release status
 
-Version 0.4.0 is the next release source. Once its versioned GitHub Release is
-published, Trusted Publishing sends the same immutable README to
-[PyPI](https://pypi.org/project/AIsketcher/). Merges to `main` automatically
+Version 0.4.0 is the current release source. Its versioned GitHub Release
+publishes the same immutable README to
+[PyPI](https://pypi.org/project/AIsketcher/) through Trusted Publishing.
+Merges to `main` automatically
 rebuild this documentation site after the strict docs checks pass. See the
 [changelog](changelog.md) for details.

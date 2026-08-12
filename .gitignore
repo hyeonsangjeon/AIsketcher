@@ -44,8 +44,9 @@ tmp/
 /pic/
 /test/
 
-# Model weights are downloaded to the user cache, never committed.
-models/
+# Model weights are downloaded to the user cache, never committed. Keep the
+# documentation namespace available for tracked model-selection guides.
+/models/
 *.ckpt
 *.pt
 *.pth
