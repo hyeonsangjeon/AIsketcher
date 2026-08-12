@@ -103,7 +103,8 @@ def _open_guided_sample(page: Page) -> Any:
 
 def test_guided_gallery_is_large_horizontal_and_has_no_inner_scroll(page: Page) -> None:
     cards = _open_guided_sample(page)
-    expect(page.locator("#simple-model-plan")).to_contain_text("1.9 GB")
+    expect(page.locator("#simple-model-plan")).not_to_contain_text("1.9 GB")
+    expect(page.locator("#simple-model-plan")).to_contain_text("16.2 GB")
     expect(page.locator("#simple-model-plan")).not_to_contain_text("315 MB")
     boxes = [cards.nth(index).bounding_box() for index in range(4)]
 

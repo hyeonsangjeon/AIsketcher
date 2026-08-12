@@ -219,6 +219,7 @@ div.main.fillable {
 }
 
 #structure-control > div,
+#simple-output-control > div,
 #seed-control > div,
 #output-control > div,
 #variation-control > div,
@@ -228,6 +229,7 @@ div.main.fillable {
 }
 
 #structure-control label,
+#simple-output-control label,
 #output-control label,
 #variation-control label {
   border: 1px solid var(--studio-border) !important;
@@ -237,6 +239,7 @@ div.main.fillable {
 }
 
 #structure-control label:has(input:checked),
+#simple-output-control label:has(input:checked),
 #output-control label:has(input:checked),
 #variation-control label:has(input:checked) {
   border-color: var(--studio-cobalt) !important;

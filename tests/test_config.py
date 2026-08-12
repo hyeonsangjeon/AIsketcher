@@ -37,7 +37,7 @@ def test_defaults_are_valid_and_paths_are_platform_scoped(
 
     assert config.preset == "flux2-klein-edit@1"
     assert config.seed_mode is SeedMode.SCOUT
-    assert config.output_count == 4
+    assert config.output_count == 1
     assert config.cache_path is None
     assert default_user_config_path() == tmp_path / "user-config" / "config.yaml"
     assert default_project_config_path() == tmp_path / "aisketcher.yaml"

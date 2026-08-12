@@ -2,7 +2,8 @@
 
 ## Explore a deliberate set
 
-The default scout contains four candidates. This is large enough to expose
+The default scout contains one candidate so the first real result arrives
+quickly. Request four candidates when you want enough breadth to expose
 meaningful direction changes while remaining readable as a contact sheet and
 reasonable for local hardware.
 

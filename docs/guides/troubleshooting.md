@@ -63,7 +63,7 @@ If installation reports an optional-dependency error, install the local
 runtime first:
 
 ```bash
-python -m pip install "aisketcher[local]==0.3.0"
+python -m pip install "aisketcher[local]==0.4.0"
 ```
 
 Do not copy a partial Hugging Face cache into AIsketcher's managed directory.
@@ -72,9 +72,9 @@ reviewed allowlist — weights, configuration, scheduler, index, and tokenizer
 files — at its recorded size and SHA-256. It also rejects unsafe checkpoint
 suffixes.
 
-FLUX.2 Klein Edit is the recommended/default preset for new live studies.
-`sdxl-canny-lite@1` and `sdxl-canny@1` are Legacy choices for existing
-manifests or explicit Canny ControlNet work; the historical Guided Sample
+FLUX.2 Klein is the **Fast Edit** preset for new reference-image studies.
+`sdxl-canny-lite@1` and `sdxl-canny@1` are **Structure Lock** legacy choices
+for existing manifests or explicit Canny work; the historical Guided Sample
 continues to identify its recorded SDXL recipe.
 
 ## A model download was stopped or failed
@@ -167,7 +167,7 @@ identical pixels.
 
 The first number is elapsed time and the second is an estimate based on the
 current phase; the estimate is not a timeout. First use can include model
-loading, and four outputs are generated sequentially to bound GPU memory.
+loading, and the requested outputs are generated sequentially to bound GPU memory.
 
 While work is active, **Stop** appears. Queued work is removed immediately.
 Active generation stops cooperatively at a denoising-step or output boundary,

@@ -105,7 +105,7 @@ from .prompt_normalization import (
 from .studio import Studio
 from .study import Study
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AIsketcherError",

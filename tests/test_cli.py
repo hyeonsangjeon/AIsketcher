@@ -114,10 +114,26 @@ def test_studio_reports_missing_demo_extra_without_a_traceback(
     assert "Traceback" not in captured.err
 
 
+def test_try_launches_the_zero_download_tour_with_cli_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_launch_tour(*, port: int | None, open_browser: bool) -> int:
+        captured["port"] = port
+        captured["open_browser"] = open_browser
+        return 0
+
+    monkeypatch.setattr("aisketcher.tour.launch_tour", fake_launch_tour)
+
+    assert main(["try", "--port", "8765", "--no-open"]) == 0
+    assert captured == {"port": 8765, "open_browser": False}
+
+
 @pytest.mark.parametrize(
     ("preset", "simple_model"),
     (
-        ("flux2-klein-edit@1", "auto"),
+        ("flux2-klein-edit@1", "flux2-klein-edit@1"),
         ("sdxl-canny-lite@1", "sdxl-canny-lite@1"),
     ),
 )
@@ -183,6 +199,7 @@ def test_studio_uses_the_managed_cache_for_the_korean_translator(
     assert isinstance(build_kwargs, dict)
     assert build_kwargs["default_preset"] == preset
     assert build_kwargs["default_simple_model"] == simple_model
+    assert captured["generation_device"] == config.device
     assert captured["launch"] == {
         "server_name": "127.0.0.1",
         "server_port": 7862,

@@ -769,7 +769,7 @@ MODEL_ARTIFACTS: Mapping[str, ModelArtifact] = MappingProxyType(_ARTIFACTS)
 _PROFILES = {
     "auto": CuratedModelProfile(
         profile_id="auto",
-        label="Auto — T4 validated",
+        label="Auto compatibility alias — FLUX.2 Fast Edit",
         artifacts=(),
         runtime_family=RuntimeFamily.AUTO_ROUTER,
         optional_dependency="aisketcher[local]",
@@ -778,7 +778,10 @@ _PROFILES = {
         minimum_vram_gb=16,
         recommended_vram_gb=24,
         status=ModelStatus.READY,
-        best_for="A safe default for both sketches and photos on a 16 GB NVIDIA T4.",
+        best_for=(
+            "Compatibility alias for fast reference-image edits on a 16 GB NVIDIA T4; "
+            "it is not an input classifier or a strict line-control route."
+        ),
         zero_click_enabled=False,
         auto_routes=(
             AutoRoute("sparse-sketch-or-line-art", "flux2-klein-4b"),
@@ -806,8 +809,8 @@ _PROFILES = {
         recommended_vram_gb=16,
         status=ModelStatus.READY,
         best_for=(
-            "Fast sketch rendering, photo restyling, and instruction edits "
-            "on a 16 GB NVIDIA T4."
+            "Fast photo restyling, flexible sketch interpretation, and instruction edits "
+            "on a 16 GB NVIDIA T4; not strict Canny or line control."
         ),
         zero_click_enabled=True,
         tested_devices=("NVIDIA Tesla T4 16 GB / Azure Standard_NC4as_T4_v3",),

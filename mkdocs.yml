@@ -1,5 +1,5 @@
 site_name: AIsketcher
-site_description: Structured visual exploration, controlled variation, and reproducible creative handoff
+site_description: Reproducible sketch-to-image studies with seed scouting, controlled variation, model-independent backends, and a local Studio
 site_url: https://hyeonsangjeon.github.io/AIsketcher/
 repo_url: https://github.com/hyeonsangjeon/AIsketcher
 repo_name: hyeonsangjeon/AIsketcher
@@ -43,6 +43,7 @@ nav:
       - Configuration: reference/configuration.md
   - Concepts:
       - Design lineage: concepts/design-lineage.md
+      - Choosing a model: models/choosing-a-model.md
       - Canonical sample: canonical-sample.md
       - Canonical asset contract: assets/pocket-kingdom/README.md
       - Heritage seed asset contract: assets/heritage-seed-study/README.md
@@ -64,6 +65,7 @@ nav:
   - Release:
       - Changelog: changelog.md
       - 2026 model and Studio refresh: roadmap/2026-model-and-studio-refresh.md
+      - 0.4.0 release notes: releases/0.4.0.md
       - 0.3.0 release notes: releases/0.3.0.md
       - 0.2.1 release notes: releases/0.2.1.md
       - 0.2.0 release notes: releases/0.2.0.md

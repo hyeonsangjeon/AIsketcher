@@ -26,6 +26,7 @@ from aisketcher.studio_app.runtime import (
     AppController,
     AppState,
     GuidedSampleCatalog,
+    LocalHardware,
     RunRegistry,
     StudioAppError,
     StudioJobCancelled,
@@ -1415,12 +1416,142 @@ def test_model_install_requires_explicit_confirmation(tmp_path: Path) -> None:
     assert installed_kwargs["cancellation_token"] is installed_kwargs["cancel_event"]
     assert callable(installed_kwargs["should_cancel"])
     assert installed_kwargs["should_cancel"]() is False
-    assert len(translator_prepares) == 1
-    assert translator_prepares[0]["confirm"] is True
-    assert translator_prepares[0]["cancellation_token"] is translator_prepares[0][
-        "cancel_event"
-    ]
-    assert callable(translator_prepares[0]["should_cancel"])
+    assert translator_prepares == []
+
+
+def test_model_preflight_blocks_flux_before_download_without_cuda(tmp_path: Path) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    controller = AppController(
+        model_installer=installer,
+        workspace_root=tmp_path,
+        generation_device="auto",
+        hardware_probe=lambda: LocalHardware(mps_available=True),
+    )
+
+    with pytest.raises(StudioAppError, match="did not start the 16 GB download"):
+        controller.install_model("flux2-klein-edit@1", True)
+
+    assert installs == []
+
+
+def test_model_preflight_blocks_sdxl_on_cpu_only_auto_device(tmp_path: Path) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    controller = AppController(
+        model_installer=installer,
+        workspace_root=tmp_path,
+        generation_device="auto",
+        hardware_probe=LocalHardware,
+    )
+
+    with pytest.raises(StudioAppError, match="does not support live CPU generation"):
+        controller.install_model("sdxl-canny-lite@1", True)
+
+    assert installs == []
+
+
+def test_model_preflight_blocks_explicit_mps_when_unavailable(tmp_path: Path) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    controller = AppController(
+        model_installer=installer,
+        workspace_root=tmp_path,
+        generation_device="mps",
+        hardware_probe=LocalHardware,
+    )
+
+    with pytest.raises(StudioAppError, match="No usable Apple Silicon MPS device"):
+        controller.install_model("sdxl-canny-lite@1", True)
+
+    assert installs == []
+
+
+def test_model_preflight_blocks_insufficient_flux_vram(tmp_path: Path) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    controller = AppController(
+        model_installer=installer,
+        workspace_root=tmp_path,
+        generation_device="cuda",
+        hardware_probe=lambda: LocalHardware(
+            cuda_available=True,
+            cuda_vram_bytes=8_000_000_000,
+        ),
+    )
+
+    with pytest.raises(StudioAppError, match="below the model's 13 GB"):
+        controller.install_model("flux2-klein-edit@1", True)
+
+    assert installs == []
+
+
+def test_model_preflight_uses_registry_minimum_for_legacy_sdxl(tmp_path: Path) -> None:
+    installs: list[str] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    controller = AppController(
+        model_installer=installer,
+        workspace_root=tmp_path,
+        generation_device="cuda",
+        hardware_probe=lambda: LocalHardware(
+            cuda_available=True,
+            cuda_vram_bytes=11_000_000_000,
+        ),
+    )
+
+    with pytest.raises(StudioAppError, match="below the model's 12 GB"):
+        controller.install_model("sdxl-canny-lite@1", True)
+
+    assert installs == []
+
+
+def test_model_preflight_allows_supported_flux_and_skips_english_translator(
+    tmp_path: Path,
+) -> None:
+    installs: list[str] = []
+    translations: list[bool] = []
+
+    def installer(preset: str, **_kwargs: Any) -> None:
+        installs.append(preset)
+
+    class Translator:
+        def prepare(self, **_kwargs: Any) -> None:
+            translations.append(True)
+
+        def translate(self, value: str) -> str:
+            return value
+
+    controller = AppController(
+        model_installer=installer,
+        prompt_translator=Translator(),
+        workspace_root=tmp_path,
+        generation_device="cuda",
+        hardware_probe=lambda: LocalHardware(
+            cuda_available=True,
+            cuda_vram_bytes=16_000_000_000,
+        ),
+    )
+
+    assert controller.install_model("flux2-klein-edit@1", True, "en") == (
+        "Local model is ready."
+    )
+    assert installs == ["flux2-klein-edit@1"]
+    assert translations == []
 
 
 def test_translator_prepare_failure_releases_the_session_for_retry(

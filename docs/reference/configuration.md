@@ -26,7 +26,7 @@ aisketcher studio --config ./aisketcher.yaml
 schema_version: 1
 preset: "flux2-klein-edit@1"
 device: "auto"
-output_count: 4
+output_count: 1
 seed_mode: "scout"
 seed: null
 language: "en"
@@ -43,9 +43,9 @@ error.
 | Key | Default | Accepted values | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | `1` | `1` | Settings contract version; required in every file. |
-| `preset` | `flux2-klein-edit@1` | A registered preset or alias | Initial local model preset. It is normalized to its canonical versioned name. FLUX.2 Klein Edit is the recommended live default; SDXL Canny presets are Legacy compatibility options. |
+| `preset` | `flux2-klein-edit@1` | A registered preset or alias | Initial local model preset. FLUX.2 is the Fast Edit role; SDXL Canny presets are Structure Lock legacy options. |
 | `device` | `auto` | `auto`, `cuda`, `mps`, `cpu` | Preferred backend device. The supported FLUX.2 interactive path requires CUDA; MPS is experimental and limited to the Legacy SDXL backend. Packaged Studio live generation is disabled on CPU. |
-| `output_count` | `4` | `1`, `4`, `8` | Initial number of scout or variation outputs. |
+| `output_count` | `1` | `1`, `4`, `8` | Initial output budget. Start with one quick proof; choose four or eight for a wider seed search. |
 | `seed_mode` | `scout` | `scout`, `locked`, `explicit` | Initial seed-plan mode. |
 | `seed` | `null` | non-negative 63-bit integer or `null` | Starting value for `locked` mode only. A seed only identifies a run when paired with its complete recipe and runtime. |
 | `language` | `en` | `en`, `ko` | Initial Studio interface language. |
@@ -57,7 +57,9 @@ the application to display `plan_install()` and call `install(...,
 confirm=True)`. Set it to `false` in hosted or read-only environments where an
 administrator prepares the cache.
 
-Common aliases normalize as follows:
+Common aliases normalize as follows. `auto` is retained for configuration
+compatibility but is not an input classifier and is no longer shown as a
+separate Simple-mode choice:
 
 | Alias | Canonical preset |
 | --- | --- |
@@ -107,7 +109,7 @@ language:
 # ./aisketcher.yaml
 schema_version: 1
 preset: "flux2-klein-edit@1"
-output_count: 4
+output_count: 1
 seed_mode: "scout"
 seed: null
 ```

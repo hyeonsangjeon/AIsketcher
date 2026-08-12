@@ -42,6 +42,8 @@ REQUIRED_WHEEL_FILES = {
     "aisketcher/flux2_backend.py",
     "aisketcher/model_registry.py",
     "aisketcher/prompt_normalization.py",
+    "aisketcher/tour.py",
+    "aisketcher/tour/index.html",
     "aisketcher/studio_app/__init__.py",
     "aisketcher/studio_app/app.py",
     "aisketcher/studio_app/i18n.py",

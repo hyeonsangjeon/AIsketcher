@@ -59,7 +59,7 @@ class AIsketcherConfig:
     schema_version: int = CONFIG_SCHEMA_VERSION
     preset: str = "flux2-klein-edit@1"
     device: str = "auto"
-    output_count: int = 4
+    output_count: int = 1
     seed_mode: SeedMode | str = SeedMode.SCOUT
     seed: int | None = None
     language: str = "en"
