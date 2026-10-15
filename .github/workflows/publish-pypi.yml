@@ -324,7 +324,7 @@ jobs:
           /tmp/aisketcher-wheel-smoke/bin/aisketcher --version
           /tmp/aisketcher-wheel-smoke/bin/python tests/docs/wheel_smoke.py
       - name: Upload verified release distributions
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: python-distributions-${{ steps.release.outputs.version }}
           path: dist/*
@@ -828,7 +828,7 @@ jobs:
                   time.sleep(5)
           PY
       - name: Upload the complete canonical PyPI distributions for Release recovery
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: published-python-distributions-${{ needs.build.outputs.version }}
           path: canonical-dist/*
